@@ -1,0 +1,64 @@
+{
+  // Linux dev environment for Cantainer. Works in VS Code Dev Containers and GitHub Codespaces.
+  // Landlock ABI v4 (network rules) needs host kernel >= 6.7. Containers share the host kernel,
+  // so on macOS run Docker via OrbStack, Docker Desktop or Lima with a recent kernel.
+  // Run dev/check-kernel.sh inside the container to verify.
+  "name": "cantainer",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "profile": "default",
+      "components": "rustfmt,clippy,rust-src"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  // Docker's default seccomp profile blocks unshare(CLONE_NEWUSER) and may block the
+  // landlock_* syscalls. Cantainer installs its own seccomp filter and uses user namespaces,
+  // so the dev container has to run without Docker's filter. It does NOT need --privileged.
+  "runArgs": [
+    "--security-opt", "seccomp=unconfined",
+    "--security-opt", "apparmor=unconfined"
+  ],
+
+  "mounts": [
+    // Keep Claude Code login and settings across container rebuilds.
+    "source=cantainer-claude-config,target=/home/vscode/.claude,type=volume",
+    // Cache cargo registry/git across rebuilds.
+    "source=cantainer-cargo-registry,target=/usr/local/cargo/registry,type=volume"
+  ],
+
+  "containerEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "RUST_BACKTRACE": "1"
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "bash dev/check-kernel.sh || true",
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "fill-labs.dependi",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.check.extraArgs": ["--all-targets"],
+        "editor.formatOnSave": true,
+        "[rust]": { "editor.defaultFormatter": "rust-lang.rust-analyzer" }
+      }
+    }
+  }
+}
