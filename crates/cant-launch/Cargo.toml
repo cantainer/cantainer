@@ -1,0 +1,27 @@
+[package]
+name = "cant-launch"
+description = "Sandbox setup (Landlock, seccomp) and exec for Cantainer capsules."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+cant-policy.workspace = true
+cant-manifest.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock.workspace = true
+libc.workspace = true
+seccompiler.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

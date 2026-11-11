@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cantainer/cantainer"
+homepage = "https://github.com/cantainer/cantainer"
+authors = ["Arie Radle"]
+
+[workspace.dependencies]
+cant-manifest = { path = "crates/cant-manifest", version = "=0.0.1" }
+cant-policy = { path = "crates/cant-policy", version = "=0.0.1" }
+cant-launch = { path = "crates/cant-launch", version = "=0.0.1" }
+cant-store = { path = "crates/cant-store", version = "=0.0.1" }
+
+anyhow = "1.0.104"
+libc = "0.2.191"
+clap = { version = "4.6.7", features = ["derive"] }
+landlock = "0.4.7"
+proptest = "1.12.0"
+seccompiler = "0.5.0"
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.1.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
