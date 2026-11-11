@@ -1,0 +1,41 @@
+# curl WITHOUT a network capability. This is the "denied" half of the demo:
+# `cant run curl https://example.com` fails because the cant may not open IP sockets.
+# Copy this file to ~/.config/cantainer/cants/curl.toml and set `network = true`
+# to get a curl that can reach the network but still only writes the files you name.
+manifest_version = 1
+name = "curl"
+version = "0.1.0"
+description = "Transfer a URL (network not granted in this example)"
+
+[entrypoint]
+path = "curl"
+
+[args]
+operands = "none"
+
+[args.options]
+"-o" = "rw"
+"--output" = "rw"
+"-T" = "r"
+"--upload-file" = "r"
+"-d" = "value"
+"--data" = "value"
+"-H" = "value"
+"--header" = "value"
+"-X" = "value"
+"--request" = "value"
+"-A" = "value"
+"--user-agent" = "value"
+"-u" = "value"
+"--user" = "value"
+"-w" = "value"
+"--write-out" = "value"
+"-m" = "value"
+"--max-time" = "value"
+
+[capabilities]
+network = false
+fs.ro = ["/etc/ssl", "/usr/share/ca-certificates", "/etc/ca-certificates", "/etc/pki", "/etc/nsswitch.conf", "/etc/hosts", "/etc/resolv.conf", "/etc/host.conf", "/etc/gai.conf"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "COLUMNS"]

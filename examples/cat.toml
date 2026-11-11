@@ -1,0 +1,14 @@
+# cat: reads exactly the files named on its command line. Nothing else.
+manifest_version = 1
+name = "cat"
+version = "0.1.0"
+description = "Concatenate files to standard output"
+
+[entrypoint]
+path = "cat"
+
+[args]
+operands = "r"
+
+[env]
+pass = ["LANG", "LC_*"]

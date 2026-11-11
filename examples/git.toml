@@ -1,0 +1,41 @@
+# git: works on the repository in the current directory, cannot reach the network,
+# cannot read ~/.ssh or credential stores. `cant` refuses to start it from a directory
+# that contains a protected path (such as your home directory).
+manifest_version = 1
+name = "git"
+version = "0.1.0"
+description = "Version control, confined to the current directory, offline"
+
+[entrypoint]
+path = "git"
+
+[args]
+operands = "none"
+
+[args.options]
+"-m" = "value"
+"--message" = "value"
+"-F" = "r"
+"--file" = "r"
+"-c" = "value"
+"-b" = "value"
+"-B" = "value"
+
+[capabilities]
+network = false
+fs.rw = ["$CWD"]
+fs.ro = [
+  "~/.gitconfig",
+  "~/.config/git",
+  "/etc/gitconfig",
+  "/usr/share/git-core",
+  "/usr/local/share/git-core",
+  "/etc/passwd",
+  "/etc/group",
+  "/etc/nsswitch.conf",
+]
+# git runs helpers from its exec path (location differs between distributions and builds).
+exec = ["git", "/usr/lib/git-core", "/usr/libexec/git-core", "/usr/local/libexec/git-core"]
+
+[env]
+pass = ["HOME", "LANG", "LC_*", "TERM", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_PAGER", "PAGER", "EDITOR"]

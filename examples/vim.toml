@@ -1,0 +1,41 @@
+# vim: edits exactly the files named on its command line.
+# Swap files and viminfo are disabled because they would need write access next to the
+# file (or in your home directory), which this cant is not granted.
+manifest_version = 1
+name = "vim"
+version = "0.1.0"
+description = "Edit the files named on the command line, and only those"
+
+[entrypoint]
+path = "vim"
+# -n: no swap file. -i NONE: no viminfo. Don't write backup files next to the file.
+args = ["-n", "-i", "NONE", "--cmd", "set nobackup nowritebackup"]
+
+[args]
+operands = "rw"
+
+[args.options]
+"-c" = "value"
+"--cmd" = "value"
+"-S" = "r"
+"-u" = "r"
+"-U" = "r"
+"-i" = "value"
+"-t" = "value"
+"-q" = "r"
+"-T" = "value"
+"-w" = "rw"
+"-W" = "rw"
+"-s" = "r"
+
+[capabilities]
+fs.ro = [
+  "/usr/share/vim",
+  "/etc/vim",
+  "~/.vimrc",
+  "~/.vim",
+  "~/.config/vim",
+]
+
+[env]
+pass = ["TERM", "COLORTERM", "LANG", "LC_*", "HOME", "COLUMNS", "LINES"]
