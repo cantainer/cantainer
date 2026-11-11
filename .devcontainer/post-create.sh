@@ -19,8 +19,17 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 #   sudo apt-get install -y ffmpeg && go install github.com/charmbracelet/vhs@latest
 
 rustup component add rustfmt clippy rust-src
+# rtk (Rust Token Killer, rtk-ai/rtk): CLI proxy that shrinks command output for LLM agents.
+# Upstream installer (checksum-verified prebuilt binary), pinned to a release tag.
+# Do NOT `cargo install rtk` from crates.io: that is a different project (Rust Type Kit).
+RTK_VERSION=v1.2.0
+curl -fsSL "https://raw.githubusercontent.com/rtk-ai/rtk/refs/tags/${RTK_VERSION}/install.sh" |
+  RTK_VERSION="$RTK_VERSION" sh || echo "rtk install failed; retry manually"
+export PATH="$HOME/.local/bin:$PATH"
+
 cargo --version
 rustc --version
+rtk gain >/dev/null 2>&1 && echo "rtk ok" || echo "rtk missing or wrong package"
 claude --version || echo "claude CLI not found on PATH yet; open a new terminal"
 
 bash dev/check-kernel.sh || true
