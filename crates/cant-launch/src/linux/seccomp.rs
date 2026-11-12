@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use cant_policy::Policy;
 use seccompiler::{
     BpfProgram, SeccompAction, SeccompCmpArgLen as Len, SeccompCmpOp as Op, SeccompCondition,
-    SeccompFilter, SeccompRule, TargetArch, apply_filter, sock_filter,
+    SeccompFilter, SeccompRule, TargetArch, apply_filter,
 };
 
 use crate::LaunchError;
@@ -27,6 +27,13 @@ use crate::LaunchError;
 const SYS_FCHMODAT2: i64 = 452;
 const SYS_SETXATTRAT: i64 = 463;
 const SYS_REMOVEXATTRAT: i64 = 466;
+
+// kexec_file_load: the libc crate defines it for x86_64 and aarch64 glibc only.
+#[cfg(target_arch = "x86_64")]
+const SYS_KEXEC_FILE_LOAD: i64 = 320;
+// aarch64 and riscv64 use the asm-generic table.
+#[cfg(not(target_arch = "x86_64"))]
+const SYS_KEXEC_FILE_LOAD: i64 = 294;
 
 fn err(e: impl std::fmt::Display) -> LaunchError {
     LaunchError::Seccomp(e.to_string())
@@ -54,7 +61,7 @@ fn denied_syscalls() -> Vec<i64> {
         libc::SYS_process_vm_writev,
         // Kernel, modules, system state.
         libc::SYS_kexec_load,
-        libc::SYS_kexec_file_load,
+        SYS_KEXEC_FILE_LOAD,
         libc::SYS_init_module,
         libc::SYS_finit_module,
         libc::SYS_delete_module,
@@ -239,7 +246,7 @@ fn x32_guard() -> BpfProgram {
     const X32_SYSCALL_BIT: u32 = 0x4000_0000;
     const RET_ERRNO: u32 = 0x0005_0000;
     const RET_ALLOW: u32 = 0x7fff_0000;
-    let ins = |code, jt, jf, k| sock_filter { code, jt, jf, k };
+    let ins = |code, jt, jf, k| seccompiler::sock_filter { code, jt, jf, k };
     vec![
         ins(LD_W_ABS, 0, 0, 4),
         ins(JEQ_K, 0, 3, AUDIT_ARCH_X86_64),
@@ -289,5 +296,15 @@ mod tests {
         v.sort_unstable();
         v.dedup();
         assert_eq!(v.len(), n);
+    }
+}
+
+#[cfg(test)]
+mod syscall_number_tests {
+    /// Our own constants must agree with the libc crate wherever it has them.
+    #[test]
+    #[cfg(all(target_arch = "x86_64", target_env = "gnu"))]
+    fn kexec_file_load_matches_libc() {
+        assert_eq!(super::SYS_KEXEC_FILE_LOAD, libc::SYS_kexec_file_load);
     }
 }
