@@ -11,7 +11,10 @@ Security-relevant changes are listed under **Security**.
 ### Added
 - Release process: `dev/release.sh`, a tag-triggered release workflow with an approval gate,
   crates.io Trusted Publishing, and prebuilt static `cant` binaries for x86_64 and aarch64 Linux
-  with SHA-256 checksums. `cargo binstall cantainer` downloads them.
+  with signed SHA-256 checksums. `cargo binstall cantainer` downloads them.
+- Packages: `.deb` and `.rpm` packages, signed APT and RPM repositories at
+  <https://cantainer.github.io/packages/>, and a Homebrew tap (`cantainer/tap/cantainer`).
+  The AUR package `cantainer-bin` is prepared and follows once AUR registration reopens.
 
 ### Fixed
 - Landlock rule paths are opened with `O_PATH` through `rustix` instead of `landlock::PathFd`.

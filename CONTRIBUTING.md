@@ -43,6 +43,9 @@ CI runs the same checks, plus the sandbox integration tests on GitHub's Ubuntu r
   it quietly.
 - Error messages are part of the interface. Keep the voice: `cant: vim can't write ~/.ssh/config (…)`.
 - Keep commits small and logical, with clear messages.
+- Add a line to `CHANGELOG.md` under `## [Unreleased]` for anything users notice: features,
+  fixes, behaviour changes, and anything security-relevant (under **Security**). Releases are
+  described in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
