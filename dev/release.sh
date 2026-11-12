@@ -54,7 +54,7 @@ perl -pi -e "s|^\[Unreleased\]: .*\$|[Unreleased]: $repo_url/compare/v$new...HEA
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 cargo test --workspace --quiet
-cargo publish --dry-run --workspace --quiet
+cargo publish --dry-run --workspace --quiet --allow-dirty   # the bump is committed below
 
 # --- Commit and tag --------------------------------------------------------------------------
 git add Cargo.toml Cargo.lock CHANGELOG.md
