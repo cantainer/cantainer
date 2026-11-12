@@ -49,6 +49,34 @@ jobs:
       - name: Sandbox integration tests
         run: cargo test -p cantainer --test sandbox -- --nocapture
 
+  cross:
+    # Every target we support or ship must build warning-free: libc's syscall tables differ
+    # between architectures and C libraries (0.0.2's first release run failed on aarch64-musl).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - riscv64gc-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show && rustup target add ${{ matrix.target }}
+      - run: cargo clippy --workspace --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+
+  arm64:
+    # The static aarch64 build that releases ship, tested natively, sandbox tests included.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show && rustup target add aarch64-unknown-linux-musl
+      - name: Install programs used by the demo tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
+      - run: cargo run --quiet --target aarch64-unknown-linux-musl -p cantainer -- check || true
+      - run: cargo test --workspace --locked --target aarch64-unknown-linux-musl
+
   macos:
     # Linux-only code is cfg-gated; the workspace must still build on macOS for editing.
     runs-on: macos-latest
