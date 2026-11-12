@@ -643,3 +643,66 @@ fn library_curl_net_reaches_the_network_but_not_secrets() {
     ]);
     assert!(!o.status.success(), "{}", stdout(&o));
 }
+
+// ---- agent-sh and capabilities.cants ---------------------------------------------------------
+
+/// Runs `cant run agent-sh -c SCRIPT` in the project, with `cant` on PATH and stdin closed.
+fn agent(f: &Fixture, dir: &Path, script: &str) -> Output {
+    let bin = std::fs::canonicalize(CANT).expect("cant path");
+    let path = format!("{}:/usr/bin:/bin", bin.parent().expect("bin dir").display());
+    f.command(&["run", "agent-sh", "-c", script])
+        .current_dir(dir)
+        .env("PATH", path)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run agent-sh")
+}
+
+#[test]
+fn agent_sh_runs_tools_only_as_cants() {
+    if !library_ready(&["bash", "git", "grep", "cat"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    let git = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&f.work)
+        .status()
+        .expect("git init");
+    assert!(git.success());
+
+    let ok = |script: &str, expected: &str| {
+        let o = agent(&f, &f.work, script);
+        assert!(o.status.success(), "{script}: {}{}", stdout(&o), stderr(&o));
+        assert!(
+            stdout(&o).contains(expected),
+            "{script}: expected {expected:?} in {}",
+            stdout(&o)
+        );
+    };
+    ok("cant run cat notes.txt", "hello");
+    ok("cant run grep -rn world", "notes2.txt:2:world");
+    ok("cant run git status --short", "?? notes.txt");
+    ok("echo made > new.txt && cant run cat new.txt", "made");
+    ok("cat notes.txt", "hello"); // directly, within agent-sh's own rights
+
+    // Secrets: refused by the nested cant, and denied by the kernel when tried directly.
+    let o = agent(&f, &f.work, "cant run cat ~/.ssh/id_rsa");
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+    let o = agent(&f, &f.work, "cat ~/.ssh/id_rsa");
+    assert!(!o.status.success());
+    assert!(!stdout(&o).contains("PRIVATE KEY"));
+
+    // A cant agent-sh doesn't list isn't available, and says why.
+    let o = agent(&f, &f.work, "cant run curl-net http://127.0.0.1:9/");
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("curl-net isn't available here"),
+        "{}",
+        stderr(&o)
+    );
+
+    // No network for anything inside, and no start from a directory holding secrets.
+    let o = agent(&f, &f.home, "true");
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+}

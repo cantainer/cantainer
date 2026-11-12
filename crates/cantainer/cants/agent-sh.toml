@@ -1,0 +1,32 @@
+# agent-sh: a shell for an AI agent, or any script you don't fully trust.
+#
+#   cant run agent-sh -c 'cant run rg TODO && cant run git diff'
+#
+# It works in the current directory: it can read and write files there, nothing else, and has
+# no network. It can run the cants listed in `cants` (each with its own, smaller rights) and
+# their programs directly (within agent-sh's rights). Secrets such as ~/.ssh stay out of reach,
+# and `cant` refuses to start it in a directory that contains one, such as your home directory.
+# To give the agent more tools, copy this manifest and extend `cants`:
+#   cant show agent-sh > ~/.config/cantainer/cants/agent-sh.toml
+manifest_version = 1
+name = "agent-sh"
+version = "0.1.0"
+description = "A shell for AI agents: the current directory, tools only as cants"
+
+[entrypoint]
+path = "bash"
+args = ["--norc", "--noprofile"]
+
+[args]
+operands = "r"        # a script to run
+
+[args.options]
+"-c" = "value"
+
+[capabilities]
+network = false
+fs.rw = ["$CWD"]
+cants = ["cat", "head", "tail", "wc", "diff", "sed", "jq", "grep", "rg", "find", "ls", "tree", "git"]
+
+[env]
+pass = ["HOME", "PATH", "LANG", "LC_*", "TERM", "COLUMNS"]

@@ -28,6 +28,10 @@ Security-relevant changes are listed under **Security**.
   operand is a pattern, filter or script rather than a file (`grep`, `rg`, `jq`, `sed`).
 - Manifests: `entrypoint.path` may be `~/...` (tools installed in your home), and
   `[env] set` sets variables to fixed values (`$CWD` and `~` expand).
+- `capabilities.cants = [...]`: a cant may run these cants, and its rights include theirs, so
+  nested `cant run` works. Running an unlisted cant inside another fails with a clear message.
+- Built-in `agent-sh`: a shell for AI agents that works in the current directory, has no
+  network, and runs tools as cants.
 - `cant completions bash|zsh|fish|elvish|powershell`, and man pages. Packages and the Homebrew
   formula install both.
 
