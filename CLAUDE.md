@@ -129,9 +129,23 @@ Published 2026-11-12: `cantainer`, `cant-manifest`, `cant-policy`, `cant-launch`
 0.0.1 on crates.io (tag `v0.0.1`). The maintainer ran `cargo publish` from the codespace with the
 `CRATES_TOKEN` secret.
 
+Release process (2026-11-12, see `docs/RELEASING.md`): `dev/release.sh` + tag-triggered
+`.github/workflows/release.yml` with the `release` environment as approval gate. Channels:
+crates.io (Trusted Publishing), GitHub release (static musl binaries, .deb, .rpm, signed
+SHA256SUMS), signed APT/RPM repos in `cantainer/packages` on Pages, Homebrew tap
+`cantainer/homebrew-tap`, AUR `cantainer-bin`. External setup is done except the AUR.
+
 Open items:
-- Set up crates.io Trusted Publishing (GitHub Actions OIDC) for the five crates and a manual
-  release workflow, so future releases need no long-lived token.
+- Cut 0.0.2 through the release workflow (first real run; ask before pushing the tag). After it
+  succeeds, the maintainer revokes the `CRATES_TOKEN` crates.io token and deletes the secrets.
+- AUR: registration was closed on 2026-11-12. When it reopens: account, SSH key, secret
+  `AUR_SSH_KEY` (steps in `docs/RELEASING.md`).
+- Packaged installs have no manifests on the search path (examples land in
+  `/usr/share/doc/cantainer/examples`). Consider a system manifest directory.
+- Distro submissions (each needs the maintainer's OK before any external PR or issue):
+  nixpkgs, Alpine, then Fedora review and Debian ITP (including the landlock and seccompiler
+  crates), homebrew-core later.
+- Package signing key expires 2029-11-11.
 - Render `demo/demo.gif` with vhs (not installed in the dev container) and add it to the README.
 - `dev/lima.yaml` has not been tested on a Mac yet.
 - Git LFS hooks in `.git/hooks` without git-lfs installed: `git push` fails; pushes use
