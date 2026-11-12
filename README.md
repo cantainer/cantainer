@@ -46,6 +46,9 @@ makes the **executable** the unit of isolation:
 - **Secrets stay out of reach.** Credentials such as `~/.ssh`, `~/.aws` and `~/.gnupg` can't be
   granted by a manifest or a command-line argument, only by an explicit `--grant`.
 
+For agents there is a ready-made shell, `agent-sh`: it works in the current directory, has no
+network, and runs `git`, `cargo`, `rg` and friends as cants. See [docs/AGENTS.md](docs/AGENTS.md).
+
 The long-term goal is a Linux system with no shared userland, where every command is a cant. See
 [docs/VISION.md](docs/VISION.md).
 
@@ -272,7 +275,7 @@ crates/cant-manifest   manifest types and validation
 crates/cant-policy     capability model, powerbox, protected paths, attenuation
 crates/cant-launch     ELF resolution, Landlock, seccomp, exec
 crates/cant-store      content digests; future content-addressed store
-docs/                  VISION, ARCHITECTURE, MANIFEST, RELEASING
+docs/                  VISION, ARCHITECTURE, MANIFEST, AGENTS, RELEASING
 benches/startup.sh     startup benchmark
 dev/                   Lima VM config, kernel check, release script
 packaging/             release tarball, .deb/.rpm, APT/RPM repos, Homebrew, AUR; signing key

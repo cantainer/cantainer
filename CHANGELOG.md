@@ -34,7 +34,7 @@ Security-relevant changes are listed under **Security**.
   and tests run sandboxed, so a malicious dependency can't read `~/.ssh` or, offline, reach the
   network. Tested with a build script that tries to read a key.
 - Built-in `agent-sh`: a shell for AI agents that works in the current directory, has no
-  network, and runs tools as cants.
+  network, and runs tools as cants. Guide: `docs/AGENTS.md`.
 - `cant completions bash|zsh|fish|elvish|powershell`, and man pages. Packages and the Homebrew
   formula install both.
 
