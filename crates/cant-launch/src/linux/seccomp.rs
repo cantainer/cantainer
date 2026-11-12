@@ -181,10 +181,13 @@ fn eperm_filter(policy: &Policy, arch: TargetArch) -> Result<BpfProgram, LaunchE
     // Path-based chmod: refused, or with `chmod_by_path` refused only for modes outside 0775
     // (setuid, setgid, sticky, other write), so a cant can't make files world-writable or
     // setuid. The mode is argument 2 of fchmodat/fchmodat2, 1 of chmod.
-    let mut chmods = vec![(libc::SYS_fchmodat, 2), (SYS_FCHMODAT2, 2)];
-    #[cfg(target_arch = "x86_64")]
-    chmods.push((libc::SYS_chmod, 1));
-    for (nr, mode_arg) in chmods {
+    let chmods: &[(i64, u8)] = &[
+        (libc::SYS_fchmodat, 2),
+        (SYS_FCHMODAT2, 2),
+        #[cfg(target_arch = "x86_64")]
+        (libc::SYS_chmod, 1),
+    ];
+    for &(nr, mode_arg) in chmods {
         let deny = if policy.chmod_by_path {
             let mut r = Vec::new();
             for bit in CHMOD_FORBIDDEN_BITS {
