@@ -801,7 +801,27 @@ fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
     };
 
     let o = run(&["run", "-q"]);
-    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    if !o.status.success() {
+        // Enough to debug a failure on a CI runner: the grants, and what the build script is.
+        let explained = f
+            .command(&["run", "--explain", m, "build"])
+            .output()
+            .expect("explain");
+        let scripts = Command::new("sh")
+            .arg("-c")
+            .arg("find target -name 'build_script_build*' -type f -exec file {} + ; uname -m")
+            .current_dir(&f.work)
+            .output()
+            .expect("find");
+        panic!(
+            "cargo run failed:\n{}{}\n--- explain ---\n{}\n--- build scripts ---\n{}{}",
+            stdout(&o),
+            stderr(&o),
+            stdout(&explained),
+            stdout(&scripts),
+            stderr(&scripts)
+        );
+    }
     assert_eq!(stdout(&o), "built\n");
 
     // A build script that tries to steal a key.
