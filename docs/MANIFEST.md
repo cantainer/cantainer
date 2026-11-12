@@ -67,7 +67,7 @@ pass = ["TERM", "LANG", "LC_*", "HOME"]
 
 | Field | Required | Meaning |
 |---|---|---|
-| `path` | yes | An absolute path, or a bare program name. Bare names are looked up in a fixed list of system directories (`/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/local/sbin`, `/usr/sbin`, `/sbin`), **never** in the caller's `$PATH`. |
+| `path` | yes | An absolute path, `~/...` (a tool installed in your home, such as `~/.cargo/bin/cargo`), or a bare program name. Bare names are looked up in a fixed list of system directories (`/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/local/sbin`, `/usr/sbin`, `/sbin`), **never** in the caller's `$PATH`. |
 | `args` | no | Arguments always placed before the user's arguments. |
 
 The program must be a native ELF executable. Scripts (`#!`) are not supported yet.
@@ -151,6 +151,7 @@ Libraries of `exec` targets are resolved for files, but not for directories.
 | Field | Default | Meaning |
 |---|---|---|
 | `pass` | `[]` | Environment variables that pass through. A trailing `*` matches a prefix (`LC_*`). |
+| `set` | `{}` | Variables set to fixed values, replacing the caller's: `set = { CARGO_NET_OFFLINE = "true", TMPDIR = "$CWD/target/tmp" }`. A value that is `$CWD`, `$CWD/...`, `~` or `~/...` is expanded. `LD_*` and `CANT_POLICY` can't be set. |
 
 Everything else is removed from the environment. Patterns that could match a dynamic-linker
 variable (`LD_*`, `L*`, `*`) are rejected. `cant` always sets `CANT_POLICY` (see

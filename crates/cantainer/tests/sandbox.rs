@@ -325,6 +325,36 @@ fn environment_is_filtered() {
     assert!(out.contains("CANT_POLICY="), "{out}");
 }
 
+#[test]
+fn home_entrypoint_and_fixed_environment() {
+    if !supported() || !have("env") {
+        return;
+    }
+    let f = Fixture::new();
+    let bin = f.home.join("bin");
+    std::fs::create_dir_all(&bin).expect("mkdir");
+    let env = cant_policy::find_program("env").expect("env");
+    std::fs::copy(std::fs::canonicalize(env).expect("env"), bin.join("myenv")).expect("copy");
+    let m = f.manifest(
+        "myenv",
+        "[entrypoint]\npath = \"~/bin/myenv\"\n\
+         [env]\npass = [\"KEEP\"]\nset = { KEEP = \"fixed\", OUT = \"$CWD/out\" }\n",
+    );
+    let o = f
+        .command(&["run", m.to_str().expect("utf8")])
+        .env("KEEP", "from caller")
+        .output()
+        .expect("run");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(out.contains("KEEP=fixed\n"), "{out}");
+    assert!(!out.contains("from caller"), "{out}");
+    assert!(
+        out.contains(&format!("OUT={}/out\n", f.work.display())),
+        "{out}"
+    );
+}
+
 // ---- seccomp ---------------------------------------------------------------------------------
 
 #[test]

@@ -13,7 +13,7 @@ use std::process::ExitCode;
 
 use cant_launch::{LaunchError, POLICY_ENV, Plan};
 use cant_policy::{Context, Origin, Policy, PolicyError, UserGrant, display_path};
-use catalog::{Catalog, Found, Source};
+use catalog::{Catalog, Found};
 use clap::{CommandFactory, Parser, Subcommand};
 
 /// Appends a line to a command's output. Commands write into a buffer that `main` prints, so a
@@ -235,7 +235,7 @@ fn prepare(
 fn run(args: RunArgs, out: &mut String) -> Result<ExitCode, Failure> {
     let (found, ctx, plan, skipped) = prepare(&args.cant, &args.args, &args.grants)?;
     if args.explain {
-        print_explain(out, &found.source, &ctx, &plan, &skipped);
+        print_explain(out, &found, &ctx, &plan, &skipped);
         return Ok(ExitCode::SUCCESS);
     }
     let mut warn = |msg: &str| eprintln!("cant: {msg}");
@@ -293,18 +293,21 @@ fn print_policy(out: &mut String, ctx: &Context, policy: &Policy) {
 
 fn print_explain(
     out: &mut String,
-    source: &Source,
+    found: &Found,
     ctx: &Context,
     plan: &Plan,
     skipped: &[cant_policy::Skipped],
 ) {
-    outln!(out, "cant:         {} ({source})", plan.cant);
+    outln!(out, "cant:         {} ({})", plan.cant, found.source);
     outln!(out, "program:      {}", plan.program.display());
     let argv: Vec<String> = std::iter::once(&plan.argv0)
         .chain(plan.args.iter())
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
     outln!(out, "argv:         {}", argv.join(" "));
+    for (name, value) in &found.manifest.env.set {
+        outln!(out, "env set:      {name}={value}");
+    }
     if plan.nested {
         outln!(
             out,

@@ -89,6 +89,10 @@ pub fn plan(
     let mut env: Vec<(OsString, OsString)> = std::env::vars_os()
         .filter(|(k, _)| k != POLICY_ENV && k.to_str().is_some_and(|k| policy.passes_env(k)))
         .collect();
+    for (name, value) in &built.env_set {
+        env.retain(|(k, _)| k != name.as_str());
+        env.push((name.into(), value.clone()));
+    }
     if let Ok(text) = effective.to_toml() {
         env.push((POLICY_ENV.into(), text.into()));
     }

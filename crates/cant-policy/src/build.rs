@@ -120,6 +120,8 @@ pub struct Built {
     pub exec_targets: Vec<PathBuf>,
     /// Manifest paths that do not exist and were skipped.
     pub skipped: Vec<Skipped>,
+    /// `[env] set`, with `$CWD` and `~` expanded.
+    pub env_set: Vec<(String, std::ffi::OsString)>,
 }
 
 /// Why `cant` refused to build a policy. Messages are complete sentences without the
@@ -401,7 +403,7 @@ pub fn build(
     }
 
     // 2. The executable.
-    let (program, program_canonical) = resolve_entrypoint(manifest)?;
+    let (program, program_canonical) = resolve_entrypoint(manifest, &ctx.home)?;
     b.grant(
         program_canonical.clone(),
         Access::RX,
@@ -431,21 +433,45 @@ pub fn build(
         b.grant_arg(fa.index, &fa.value, fa.access)?;
     }
 
+    // 5. Fixed environment variables.
+    let env_set = manifest
+        .env
+        .set
+        .iter()
+        .map(|(name, value)| {
+            let value = if value.starts_with("$CWD") || value.starts_with('~') {
+                match PathSpec::parse(value, false) {
+                    Ok(spec) => spec.resolve(&ctx.home, &ctx.cwd).into_os_string(),
+                    Err(_) => value.into(), // unreachable for a validated manifest
+                }
+            } else {
+                value.into()
+            };
+            (name.clone(), value)
+        })
+        .collect();
+
     Ok(Built {
         policy: b.policy,
         program,
         program_canonical,
         exec_targets,
         skipped: b.skipped,
+        env_set,
     })
 }
 
 /// Finds the entrypoint: (path as found, canonical path).
-pub fn resolve_entrypoint(manifest: &Manifest) -> Result<(PathBuf, PathBuf), PolicyError> {
+pub fn resolve_entrypoint(
+    manifest: &Manifest,
+    home: &Path,
+) -> Result<(PathBuf, PathBuf), PolicyError> {
     let cant = manifest.name.clone();
     let raw = &manifest.entrypoint.path;
     let program = if raw.starts_with('/') {
         PathBuf::from(raw)
+    } else if let Some(rest) = raw.strip_prefix("~/") {
+        home.join(rest)
     } else {
         find_program(raw).ok_or_else(|| PolicyError::ProgramNotFound {
             cant: cant.clone(),

@@ -26,6 +26,8 @@ Security-relevant changes are listed under **Security**.
 - `cant new PROGRAM` writes a commented, deny-everything manifest to fill in.
 - Manifests: `[args] value_operands` and `value_operands_unless` for programs whose first
   operand is a pattern, filter or script rather than a file (`grep`, `rg`, `jq`, `sed`).
+- Manifests: `entrypoint.path` may be `~/...` (tools installed in your home), and
+  `[env] set` sets variables to fixed values (`$CWD` and `~` expand).
 - `cant completions bash|zsh|fish|elvish|powershell`, and man pages. Packages and the Homebrew
   formula install both.
 

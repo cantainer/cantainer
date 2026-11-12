@@ -48,8 +48,8 @@ pub struct Manifest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entrypoint {
-    /// Absolute path, or a bare program name looked up in a fixed system search path
-    /// (never the caller's `$PATH`).
+    /// Absolute path, `~/...` (for user-installed tools such as `~/.cargo/bin/cargo`), or a
+    /// bare program name looked up in a fixed system search path (never the caller's `$PATH`).
     pub path: String,
     /// Arguments always inserted before the user's arguments.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -146,6 +146,10 @@ pub struct EnvSpec {
     /// Variable names to pass through. A trailing `*` matches a prefix (`LC_*`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pass: Vec<String>,
+    /// Variables set to fixed values, overriding the caller's. A value of `$CWD`, `$CWD/...`,
+    /// `~` or `~/...` is expanded like a manifest path.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub set: BTreeMap<String, String>,
 }
 
 /// A path as written in a manifest, before it is resolved against a home and working directory.
@@ -420,9 +424,10 @@ impl Manifest {
         }
         match PathSpec::parse(&self.entrypoint.path, true) {
             Ok(PathSpec::Absolute(_) | PathSpec::Bare(_)) => {}
+            Ok(PathSpec::Home(p)) if !p.as_os_str().is_empty() => {}
             Ok(_) => bad(
                 "entrypoint.path".into(),
-                "must be an absolute path or a bare program name".into(),
+                "must be an absolute path, `~/...` or a bare program name".into(),
             ),
             Err(e) => bad("entrypoint.path".into(), e),
         }
@@ -475,6 +480,20 @@ impl Manifest {
                 bad(format!("env.pass[{i}]"), e);
             }
         }
+        for (name, value) in &self.env.set {
+            if let Err(e) = validate_env_name(name) {
+                bad(format!("env.set.{name}"), e);
+            } else if value.contains('\0') {
+                bad(
+                    format!("env.set.{name}"),
+                    "value contains a NUL byte".into(),
+                );
+            } else if value.starts_with("$CWD") || value.starts_with('~') {
+                if let Err(e) = PathSpec::parse(value, false) {
+                    bad(format!("env.set.{name}"), e);
+                }
+            }
+        }
         out
     }
 
@@ -486,6 +505,23 @@ impl Manifest {
             .filter_map(|p| EnvPattern::parse(p).ok())
             .collect()
     }
+}
+
+/// Names a manifest may set in `[env] set`: `[A-Za-z_][A-Za-z0-9_]*`, but not the dynamic
+/// loader's `LD_*` or `cant`'s own `CANT_POLICY`.
+fn validate_env_name(name: &str) -> Result<(), String> {
+    let mut chars = name.chars();
+    let ok = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !ok {
+        return Err(format!("`{name}` is not a valid variable name"));
+    }
+    if name.starts_with("LD_") || name == "CANT_POLICY" {
+        return Err(format!("`{name}` can't be set by a manifest"));
+    }
+    Ok(())
 }
 
 /// Validates a cant name (also used to look manifests up by name).
@@ -608,6 +644,37 @@ pass = ["LANG", "LC_*"]
     }
 
     #[test]
+    fn home_entrypoints_and_env_set() {
+        let ok = r#"
+manifest_version = 1
+name = "cargo"
+version = "1"
+[entrypoint]
+path = "~/.cargo/bin/cargo"
+[env]
+set = { CARGO_NET_OFFLINE = "true", TMPDIR = "$CWD/target/tmp", CARGO_HOME = "~/.cargo" }
+"#;
+        let m = Manifest::from_toml_str(ok).expect("valid");
+        assert_eq!(m.env.set["TMPDIR"], "$CWD/target/tmp");
+
+        let bad = ok
+            .replace("~/.cargo/bin/cargo", "~")
+            .replace("CARGO_NET_OFFLINE", "LD_PRELOAD")
+            .replace("\"$CWD/target/tmp\"", "\"$CWD/../x\"")
+            .replace("CARGO_HOME", "1X");
+        let fields: Vec<String> = problems_of(&bad).into_iter().map(|p| p.field).collect();
+        assert_eq!(
+            fields,
+            vec![
+                "entrypoint.path",
+                "env.set.1X",
+                "env.set.LD_PRELOAD",
+                "env.set.TMPDIR"
+            ]
+        );
+    }
+
+    #[test]
     fn value_operands_are_checked() {
         let ok = r#"
 manifest_version = 1
@@ -674,9 +741,12 @@ pass = ["*", "LD_PRELOAD", "L*", "9X"]
     }
 
     #[test]
-    fn entrypoint_must_be_absolute_or_bare() {
-        let p = problems_of(&CAT.replace("/usr/bin/cat", "~/bin/cat"));
-        assert_eq!(p[0].field, "entrypoint.path");
+    fn entrypoint_must_be_absolute_home_or_bare() {
+        for bad in ["bin/cat", "$CWD/cat", "~"] {
+            let p = problems_of(&CAT.replace("/usr/bin/cat", bad));
+            assert_eq!(p[0].field, "entrypoint.path", "{bad}");
+        }
+        Manifest::from_toml_str(&CAT.replace("/usr/bin/cat", "~/bin/cat")).expect("home ok");
         let m = Manifest::from_toml_str(&CAT.replace("/usr/bin/cat", "cat")).expect("bare ok");
         assert_eq!(m.entrypoint.path, "cat");
     }
