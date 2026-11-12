@@ -169,8 +169,25 @@ operands = "r"        # non-option arguments are files to read
 pass = ["LANG", "LC_*"]
 ```
 
-The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md). The built-in manifests are in
+The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md).
+
+### Built-in cants
+
+`cant list` shows them; `cant show NAME` prints one. Sources:
 [`crates/cantainer/cants/`](crates/cantainer/cants).
+
+| Cant | May touch |
+|---|---|
+| `cat`, `head`, `tail`, `wc`, `diff` | the files you name, read-only |
+| `sed`, `jq` | the files you name, read-only (the script or filter isn't a file); no `sed -i` |
+| `grep`, `rg`, `find`, `ls`, `tree` | the current directory and the paths you name, read-only; `find` can't `-delete` or `-exec` |
+| `vim` | the files you name, read-write |
+| `git` | the current directory, read-write; no network |
+| `curl` | nothing: no network (files named with `-o` are writable) |
+| `curl-net` | the network; writes only files named with `-o`, `-c` or `-D` |
+
+None of them can read protected paths such as `~/.ssh`. Cants that read the current directory
+refuse to start in a directory that contains one, such as your home directory.
 
 ## How it works
 

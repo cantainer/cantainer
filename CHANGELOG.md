@@ -16,7 +16,10 @@ Security-relevant changes are listed under **Security**.
   <https://cantainer.github.io/packages/>, and a Homebrew tap (`cantainer/tap/cantainer`).
   The AUR package `cantainer-bin` is prepared and follows once AUR registration reopens.
 
-- Manifests are built into `cant`, so every installation can run `cat`, `git`, … by name.
+- Built-in cants for everyday tools: `cat`, `head`, `tail`, `wc`, `diff`, `sed`, `jq`, `grep`,
+  `rg`, `find`, `ls`, `tree`, `git`, `vim`, `curl` (no network) and `curl-net`. Each has a
+  sandbox test showing it works and can't reach `~/.ssh`.
+- Manifests are built into `cant`, so every installation can run them by name.
   Lookup order: `~/.config/cantainer/cants`, then `/etc/cantainer/cants` (new), then built in.
 - `cant show NAME` prints a manifest, for example to copy and customize it.
 - `cant list` shows where each manifest comes from.
