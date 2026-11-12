@@ -1,0 +1,57 @@
+# Lima VM for developing Cantainer on macOS.
+#
+#   limactl start --name=cantainer dev/lima.yaml
+#   limactl shell cantainer
+#   cd /Users/<you>/path/to/cantainer      # your home directory is mounted at the same path
+#   cargo run -p cantainer -- check && cargo test --workspace
+#
+# Ubuntu 24.04 ships Linux 6.8: Landlock ABI 4, so filesystem and TCP rules are available.
+# Requires Lima >= 2.0.
+minimumLimaVersion: 2.0.0
+
+base:
+- template:ubuntu-24.04
+
+# Apple Virtualization.framework with virtiofs (fast file sharing).
+vmType: vz
+mountType: virtiofs
+cpus: 4
+memory: 8GiB
+
+# Your macOS home directory, writable, at the same path inside the VM.
+mounts:
+- location: "~"
+  writable: true
+
+# No container runtime needed.
+containerd:
+  system: false
+  user: false
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+      build-essential pkg-config ca-certificates curl git vim hyperfine
+- mode: user
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    if ! command -v rustup >/dev/null && [ ! -x "$HOME/.cargo/bin/rustup" ]; then
+      curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --component rustfmt,clippy
+    fi
+    # Build output stays inside the VM: sharing target/ with macOS builds over virtiofs is
+    # slow and mixes artifacts from two operating systems.
+    grep -q CARGO_TARGET_DIR "$HOME/.profile" \
+      || echo 'export CARGO_TARGET_DIR="$HOME/cantainer-target"' >> "$HOME/.profile"
+
+message: |
+  Cantainer dev VM is ready.
+    limactl shell cantainer
+    cd {{.Dir}}/..   # or wherever your checkout lives under your home directory
+    cargo run -p cantainer -- check
