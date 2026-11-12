@@ -28,3 +28,10 @@ clap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+# `cargo binstall cantainer` downloads the static binary from the GitHub release
+# (made by .github/workflows/release.yml). binstall falls back to the musl builds on any Linux.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/cant-v{ version }-{ target }.tar.gz"
+bin-dir = "cant-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"

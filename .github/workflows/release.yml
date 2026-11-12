@@ -1,0 +1,239 @@
+name: release
+
+# Started by pushing a version tag made by dev/release.sh. See docs/RELEASING.md.
+#
+#   verify  ─┐
+#   build   ─┴─> publish (environment `release`: waits for approval)
+#                  crates.io -> GitHub release -> APT/RPM repos -> Homebrew tap -> AUR
+#
+# Every publish step can be re-run: anything already published is skipped or replaced.
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fingerprint of packaging/signing-key.asc. The secret key must match it.
+  SIGNING_KEY_FPR: 93B111A25A4873A32AFAEF6DDEC03DB83F0D540B
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: rustup show
+      - name: Tag, version and changelog agree
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          crate="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "cantainer") | .version')"
+          if [ "$crate" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the crate version $crate"; exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"; exit 1
+          fi
+          dev/changelog-section.sh "$version" > /dev/null \
+            || { echo "::error::CHANGELOG.md has no section for $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Install programs used by the demo tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+      - run: cargo test --workspace --locked
+      - run: cargo publish --dry-run --workspace --locked
+
+  build:
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup show && rustup target add "$TARGET"
+      - run: cargo build --release --locked -p cantainer --target "$TARGET"
+      - name: Static, runs, right version
+        run: |
+          bin="target/$TARGET/release/cant"
+          file "$bin"
+          file "$bin" | grep -Eq 'static-pie linked|statically linked'
+          "$bin" --version | grep -qx "cant $VERSION"
+          "$bin" check || echo "::warning::this runner's kernel cannot sandbox cants"
+      - name: Install programs used by the demo tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+      - name: Sandbox tests against the static build
+        run: cargo test --locked -p cantainer --target "$TARGET" --test sandbox
+      - run: packaging/tarball.sh "$VERSION" "$TARGET" "target/$TARGET/release/cant" dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write   # GitHub release
+      id-token: write   # crates.io Trusted Publishing
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm createrepo-c
+      - run: rustup show
+
+      - name: Import the signing key
+        env:
+          PACKAGE_SIGNING_KEY: ${{ secrets.PACKAGE_SIGNING_KEY }}
+        run: |
+          if [ -z "$PACKAGE_SIGNING_KEY" ]; then
+            echo "::error::secret PACKAGE_SIGNING_KEY is empty"; exit 1
+          fi
+          printf '%s\n' "$PACKAGE_SIGNING_KEY" | gpg --batch --import
+          gpg --batch --list-secret-keys --with-colons | grep -q "^fpr:::::::::$SIGNING_KEY_FPR:" \
+            || { echo "::error::PACKAGE_SIGNING_KEY is not the key $SIGNING_KEY_FPR"; exit 1; }
+
+      - name: Build .deb and .rpm packages, checksums
+        run: |
+          packaging/packages.sh "$VERSION" dist
+          cd dist
+          sha256sum -- * > SHA256SUMS
+          gpg --batch --local-user "$SIGNING_KEY_FPR" --armor --detach-sign SHA256SUMS
+          cat SHA256SUMS
+
+      # --- crates.io ---------------------------------------------------------------------
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: crates-io-auth
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
+        run: |
+          # Dependency order. Versions already on crates.io are skipped, so a re-run continues.
+          for crate in cant-manifest cant-store cant-policy cant-launch cantainer; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -A 'cantainer-release (https://github.com/cantainer/cantainer)' \
+              "https://crates.io/api/v1/crates/$crate/$VERSION")"
+            if [ "$status" = 200 ]; then
+              echo "$crate $VERSION is already on crates.io"
+            else
+              cargo publish --locked -p "$crate"
+            fi
+          done
+
+      # --- GitHub release ----------------------------------------------------------------
+      - name: GitHub release
+        run: |
+          dev/changelog-section.sh "$VERSION" > notes.md
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            flags=()
+            [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
+              --title "Cantainer $VERSION" --notes-file notes.md "${flags[@]}"
+          fi
+
+      # --- APT and RPM repositories (github.com/cantainer/packages, on Pages) -------------
+      - name: Check out the package repositories
+        if: env.PRERELEASE == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cantainer/packages
+          ssh-key: ${{ secrets.PACKAGES_DEPLOY_KEY }}
+          path: packages-repo
+      - name: Update the APT and RPM repositories
+        if: env.PRERELEASE == 'false'
+        run: |
+          packaging/update-repos.sh dist packages-repo
+          cd packages-repo
+          git add -A
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git -c user.name="Cantainer release" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "cantainer $VERSION"
+          git push
+
+      # --- Homebrew tap ------------------------------------------------------------------
+      - name: Check out the Homebrew tap
+        if: env.PRERELEASE == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cantainer/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: homebrew-tap
+      - name: Update the Homebrew formula
+        if: env.PRERELEASE == 'false'
+        run: |
+          mkdir -p homebrew-tap/Formula
+          packaging/homebrew.sh "$VERSION" dist > homebrew-tap/Formula/cantainer.rb
+          ruby -c homebrew-tap/Formula/cantainer.rb
+          cd homebrew-tap
+          git add -A
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git -c user.name="Cantainer release" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "cantainer $VERSION"
+          git push
+
+      # --- AUR ---------------------------------------------------------------------------
+      - name: Update the AUR package cantainer-bin
+        if: env.PRERELEASE == 'false'
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "::notice::AUR_SSH_KEY is not set; skipping the AUR"; exit 0
+          fi
+          ssh_dir="$RUNNER_TEMP/aur-ssh"
+          mkdir -m 700 "$ssh_dir"
+          printf '%s\n' "$AUR_SSH_KEY" > "$ssh_dir/key" && chmod 600 "$ssh_dir/key"
+          # Host key as published on https://aur.archlinux.org/ (SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4).
+          echo "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN" \
+            > "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes"
+          git clone -q ssh://aur@aur.archlinux.org/cantainer-bin.git aur
+          packaging/aur.sh "$VERSION" dist aur
+          cd aur
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git -c user.name="Arie Radle" -c user.email="arie.radle@gmail.com" \
+            commit -q -m "cantainer-bin $VERSION"
+          git push origin HEAD:master
