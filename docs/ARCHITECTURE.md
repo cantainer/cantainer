@@ -24,7 +24,8 @@ without a sandbox-capable kernel, and the launcher stays small enough to audit.
 
 ```
 cant run vim notes.txt
-  1. locate manifest      ~/.config/cantainer/cants/vim.toml, then ./examples/vim.toml
+  1. locate manifest      ~/.config/cantainer/cants/vim.toml, /etc/cantainer/cants/vim.toml,
+                          then the built-in vim manifest
   2. validate             cant-manifest (strict; all problems reported)
   3. build policy         cant-policy::build
        --grant paths      (unlock protected paths explicitly)
@@ -190,10 +191,20 @@ never what the kernel allows.
 
 ### Manifest lookup
 
-`~/.config/cantainer/cants/` takes precedence over `./examples/`. Looking in `./examples` is a
-bootstrap convenience. It means a repository you `cd` into can supply manifests for names you
-haven't installed. It can't reach protected paths, but it can grant itself the network or the
-current directory. This goes away with the registry (see VISION.md).
+Order: `~/.config/cantainer/cants/` (the user), `/etc/cantainer/cants/` (the administrator),
+then the manifests compiled into `cant` from `crates/cantainer/cants/`. The first match wins.
+
+**Built in, not installed as files.** `cargo install` and `cargo binstall` install only the
+binary, so a data directory (`/usr/share/cantainer/cants`, or one found relative to the
+executable) would leave those installations without manifests, and finding it relative to the
+executable is fragile across packaging layouts. Compiling them in costs a few kilobytes and
+keeps each manifest in step with the `cant` that understands its format. Packages create an
+empty `/etc/cantainer/cants` for administrators.
+
+**Rejected: the current directory.** 0.0.1 fell back to `./examples/`. That let a repository you
+`cd` into choose the manifest for a name such as `git`: it couldn't reach protected paths, but
+it could grant itself the network or more of the file system. Removed in 0.0.2; a path such as
+`cant run ./cants/x.toml` is still explicit.
 
 ## Where the code is
 

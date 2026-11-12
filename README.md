@@ -87,16 +87,14 @@ Then:
 
 ```sh
 cant check                          # can this kernel sandbox cants?
+cant list                           # the cants you can run by name
 ```
-
-Packages put the example manifests in `/usr/share/doc/cantainer/examples` (Homebrew:
-`$(brew --prefix)/share/cantainer/examples`).
 
 ## Quickstart
 
 ### Linux (kernel ≥ 6.2; ≥ 6.7 for Landlock network rules)
 
-Build from source, which also gives you the example manifests:
+Or build from source:
 
 ```sh
 git clone https://github.com/cantainer/cantainer && cd cantainer
@@ -106,11 +104,11 @@ echo "meeting notes" > notes.txt
 ./target/release/cant run cat notes.txt
 ```
 
-`cant run NAME` looks for `~/.config/cantainer/cants/NAME.toml`, then `./examples/NAME.toml`.
-To install the examples:
+`cant run NAME` uses `~/.config/cantainer/cants/NAME.toml`, then
+`/etc/cantainer/cants/NAME.toml`, then the manifest built into `cant`. To customize one:
 
 ```sh
-mkdir -p ~/.config/cantainer/cants && cp examples/*.toml ~/.config/cantainer/cants/
+mkdir -p ~/.config/cantainer/cants && cant show git > ~/.config/cantainer/cants/git.toml
 ```
 
 ### macOS (via Lima)
@@ -141,7 +139,8 @@ a host kernel with Landlock. OrbStack, Docker Desktop and Lima all qualify on ma
 ```
 cant run [--explain] [--grant PATH[:ACCESS]]... <CANT> [ARGS]...
 cant inspect <CANT>     manifest, resolved binary, sha256 digest, capabilities
-cant list               cants found in the search path
+cant show <CANT>        print the manifest (to copy and customize)
+cant list               cants you can run by name, and where each comes from
 cant check              does this kernel support sandboxing?
 ```
 
@@ -150,7 +149,7 @@ cant check              does this kernel support sandboxing?
 - `CANT` is a name or a path to a manifest.
 - `cant` exits with 125 when it refuses or fails. Otherwise the exit status is the program's own.
 
-A manifest declares what a cant may do. Here is `examples/cat.toml`:
+A manifest declares what a cant may do. Here is the built-in `cat` (`cant show cat`):
 
 ```toml
 manifest_version = 1
@@ -168,8 +167,8 @@ operands = "r"        # non-option arguments are files to read
 pass = ["LANG", "LC_*"]
 ```
 
-The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md). The examples cover `cat`,
-`curl` (without network), `git` (confined to the current directory, offline) and `vim`.
+The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md). The built-in manifests are in
+[`crates/cantainer/cants/`](crates/cantainer/cants).
 
 ## How it works
 
@@ -246,11 +245,11 @@ Honest differences:
 
 ```
 crates/cantainer       the `cant` CLI (published as `cantainer`)
+crates/cantainer/cants built-in manifests
 crates/cant-manifest   manifest types and validation
 crates/cant-policy     capability model, powerbox, protected paths, attenuation
 crates/cant-launch     ELF resolution, Landlock, seccomp, exec
 crates/cant-store      content digests; future content-addressed store
-examples/              manifests for cat, curl, git, vim
 docs/                  VISION, ARCHITECTURE, MANIFEST, RELEASING
 benches/startup.sh     startup benchmark
 dev/                   Lima VM config, kernel check, release script

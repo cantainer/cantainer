@@ -16,11 +16,28 @@ Security-relevant changes are listed under **Security**.
   <https://cantainer.github.io/packages/>, and a Homebrew tap (`cantainer/tap/cantainer`).
   The AUR package `cantainer-bin` is prepared and follows once AUR registration reopens.
 
+- Manifests are built into `cant`, so every installation can run `cat`, `git`, … by name.
+  Lookup order: `~/.config/cantainer/cants`, then `/etc/cantainer/cants` (new), then built in.
+- `cant show NAME` prints a manifest, for example to copy and customize it.
+- `cant list` shows where each manifest comes from.
+
+### Changed
+- The example manifests moved from `examples/` to `crates/cantainer/cants/`.
+
+### Removed
+- **Breaking:** `cant run NAME` no longer looks in `./examples/`. Use a path
+  (`cant run ./examples/x.toml`) or put the manifest in `~/.config/cantainer/cants/`.
+
 ### Fixed
+- `cant list | head` and similar no longer panic when the reader closes the pipe.
 - Landlock rule paths are opened with `O_PATH` through `rustix` instead of `landlock::PathFd`.
   On musl, Rust's std strips `O_PATH`. Every granted path was then really opened, so `cant`
   failed with "No such device or address" when there was no controlling terminal (for
   `/dev/tty`), and would have blocked on a FIFO.
+
+### Security
+- A repository's `./examples/` directory can no longer choose the manifest for a name you run
+  inside it.
 
 ## [0.0.1] - 2026-11-12
 

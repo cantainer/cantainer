@@ -5,8 +5,20 @@ files, and what else it may touch. Manifests are TOML. Parsing is strict: unknow
 types and invalid values are errors, and `cant` reports all of them at once.
 
 `cant run NAME` looks for `NAME.toml` in `~/.config/cantainer/cants/` (or
-`$XDG_CONFIG_HOME/cantainer/cants/`), then in `./examples/`. `cant run path/to/x.toml` uses
-that file directly. The file name should match `name`.
+`$XDG_CONFIG_HOME/cantainer/cants/`), then in `/etc/cantainer/cants/`, then among the manifests
+built into `cant` (`cant list` shows them all and where each comes from). The current directory
+is never searched. `cant run path/to/x.toml` uses that file directly. The file name should match
+`name`.
+
+To change a built-in manifest, copy it and edit the copy; it takes precedence:
+
+```sh
+mkdir -p ~/.config/cantainer/cants
+cant show git > ~/.config/cantainer/cants/git.toml
+```
+
+Cants can read `~/.config/cantainer` but never write it, so a cant can't change its own or
+another cant's manifest.
 
 ## Example
 

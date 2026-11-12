@@ -59,9 +59,9 @@ These are current gaps. Most are kernel limits, and some are planned work.
 - **Time-of-check races.** `cant` canonicalizes paths, then opens them to build the Landlock
   rules. A process of the same user that swaps directories in between could redirect a grant. If
   such a process exists, it already has your rights.
-- **`./examples` lookup.** `cant run NAME` falls back to `./examples/NAME.toml` in the current
-  directory. In an untrusted checkout that manifest is chosen by the repository's author. It still
-  can't reach protected paths. Prefer explicit paths or installed manifests.
+- **Manifests you install are trusted.** `cant run NAME` uses `~/.config/cantainer/cants`, then
+  `/etc/cantainer/cants`, then the built-in manifests. Anything that can write those directories
+  outside a cant (you, root) decides what a name may do. Cants themselves can't write them.
 - **`dlopen`ed libraries** aren't discovered automatically. Plugins fail to load unless the
   manifest grants them; this fails closed.
 - **seccomp is a deny list.** System calls not listed are allowed, and Landlock is the primary

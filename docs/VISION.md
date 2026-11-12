@@ -51,4 +51,4 @@ Planned, roughly in order. None of this exists yet:
   cants as fine-grained tool sandboxes there.
 
 Also on the list: script entrypoints (`#!`), `dlopen` discovery, Landlock audit logs (ABI 7+) for
-explaining runtime denials, and replacing the `./examples` lookup with the registry.
+explaining runtime denials, and fetching manifests from a registry.

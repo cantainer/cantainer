@@ -60,7 +60,7 @@ crates/
   cant-launch/             # sandbox setup + exec (Landlock, seccomp, namespaces)
   cant-policy/             # capability model, attenuation, powerbox arg grants
   cant-store/              # stub: content-addressed store interface (later composefs)
-examples/                  # sample manifests (cat, curl, git, vim)
+crates/cantainer/cants/    # built-in manifests (were examples/ until 0.0.2)
 docs/                      # VISION.md, ARCHITECTURE.md, MANIFEST.md
 dev/                       # lima.yaml, scripts
 .devcontainer/
@@ -140,8 +140,6 @@ Open items:
   succeeds, the maintainer revokes the `CRATES_TOKEN` crates.io token and deletes the secrets.
 - AUR: registration was closed on 2026-11-12. When it reopens: account, SSH key, secret
   `AUR_SSH_KEY` (steps in `docs/RELEASING.md`).
-- Packaged installs have no manifests on the search path (examples land in
-  `/usr/share/doc/cantainer/examples`). Consider a system manifest directory.
 - Distro submissions (each needs the maintainer's OK before any external PR or issue):
   nixpkgs, Alpine, then Fedora review and Debian ITP (including the landlock and seccompiler
   crates), homebrew-core later.
