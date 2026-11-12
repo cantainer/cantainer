@@ -67,7 +67,22 @@ pub struct ArgSpec {
     /// Options not listed here are treated as flags without a value.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, OptionKind>,
+    /// The first N operands are values (a pattern, a filter, a script), not files:
+    /// `grep PATTERN FILE...`, `jq FILTER FILE...`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub value_operands: u8,
+    /// If any of these options is given, there are no leading value operands, because the
+    /// value came from the option (`grep -e PATTERN FILE...`). Each must be listed in `options`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub value_operands_unless: Vec<String>,
 }
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
+}
+
+/// The most leading value operands a manifest may declare.
+pub const MAX_VALUE_OPERANDS: u8 = 4;
 
 /// Treatment of operands.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -424,6 +439,26 @@ impl Manifest {
                 bad(format!("args.options.{key:?}"), e);
             }
         }
+        if self.args.value_operands > MAX_VALUE_OPERANDS {
+            bad(
+                "args.value_operands".into(),
+                format!("at most {MAX_VALUE_OPERANDS}"),
+            );
+        }
+        if self.args.value_operands == 0 && !self.args.value_operands_unless.is_empty() {
+            bad(
+                "args.value_operands_unless".into(),
+                "needs args.value_operands".into(),
+            );
+        }
+        for (i, key) in self.args.value_operands_unless.iter().enumerate() {
+            if !self.args.options.contains_key(key) {
+                bad(
+                    format!("args.value_operands_unless[{i}]"),
+                    format!("`{key}` must also be listed in args.options"),
+                );
+            }
+        }
         for (list, entries, bare) in [
             ("capabilities.fs.ro", &self.capabilities.fs.ro, false),
             ("capabilities.fs.rw", &self.capabilities.fs.rw, false),
@@ -570,6 +605,38 @@ pass = ["LANG", "LC_*"]
             let p = problems_of(&text);
             assert!(p.iter().any(|p| p.field == "name"), "{name}: {p:?}");
         }
+    }
+
+    #[test]
+    fn value_operands_are_checked() {
+        let ok = r#"
+manifest_version = 1
+name = "grep"
+version = "1"
+[entrypoint]
+path = "grep"
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-e"]
+[args.options]
+"-e" = "value"
+"#;
+        let m = Manifest::from_toml_str(ok).expect("valid");
+        assert_eq!(m.args.value_operands, 1);
+
+        let bad = ok
+            .replace("value_operands = 1", "value_operands = 5")
+            .replace("[\"-e\"]", "[\"-e\", \"-f\"]");
+        let fields: Vec<String> = problems_of(&bad).into_iter().map(|p| p.field).collect();
+        assert_eq!(
+            fields,
+            vec!["args.value_operands", "args.value_operands_unless[1]"]
+        );
+
+        let orphan = ok.replace("value_operands = 1\n", "");
+        let fields: Vec<String> = problems_of(&orphan).into_iter().map(|p| p.field).collect();
+        assert_eq!(fields, vec!["args.value_operands_unless"]);
     }
 
     #[test]

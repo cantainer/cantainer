@@ -82,6 +82,23 @@ grant exactly those files and nothing else.
 |---|---|---|
 | `operands` | `"none"` | How non-option arguments are treated: `"none"` (not files), `"r"` (files or directories to read) or `"rw"` (to read and write). |
 | `options` | `{}` | Options that take a value, keyed by spelling (`"-o"`, `"--output"`). The value is `"value"` (not a file), `"r"` or `"rw"`. |
+| `value_operands` | `0` | The first N operands (at most 4) are values, not files: the pattern in `grep PATTERN FILE`, the filter in `jq FILTER FILE`. |
+| `value_operands_unless` | `[]` | Options that supply that value instead (`grep -e PATTERN FILE`). If any of them appears, every operand is a file. Each must be listed in `options`. |
+
+For example, grep:
+
+```toml
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-e", "--regexp", "-f", "--file"]
+
+[args.options]
+"-e" = "value"
+"--regexp" = "value"
+"-f" = "r"
+"--file" = "r"
+```
 
 Parsing follows getopt conventions:
 
@@ -89,6 +106,8 @@ Parsing follows getopt conventions:
 - `-` alone means stdin or stdout and is never a file grant.
 - `--name=value` and `--name value` both work for listed long options.
 - `-o value` and `-ovalue` both work for listed short options, including inside clusters (`-sSo out`).
+- Abbreviated long options (`--reg` for `--regexp`) aren't recognised. They fail closed: a
+  file is then not granted, never granted wrongly.
 - Options that aren't listed are treated as flags without a value. If such an option actually takes
   a value, that value is treated as an operand. This can only *add* a grant for something you
   typed. It never hides one.
