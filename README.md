@@ -1,5 +1,12 @@
 # Cantainer
 
+[![CI](https://github.com/cantainer/cantainer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cantainer/cantainer/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/cantainer.svg)](https://crates.io/crates/cantainer)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/cantainer.svg)](#license)
+[![Linux ≥ 6.2](https://img.shields.io/badge/linux-%E2%89%A5%206.2-blue)](#install)
+[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)](https://www.rust-lang.org)
+[![Status: experimental](https://img.shields.io/badge/status-experimental-red)](SECURITY.md)
+
 **By default, you can't.**
 
 Cantainer runs every executable as a lightweight capsule called a *cant*. A cant can touch only
