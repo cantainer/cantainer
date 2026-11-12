@@ -315,7 +315,10 @@ impl Builder<'_> {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 if !access.write {
                     // Nothing to grant; the program reports the missing file itself.
-                    return Ok(());
+                    // A protected location is still refused, so the answer does not depend
+                    // on whether the secret happens to exist.
+                    let lexical = nearest_canonical(&path);
+                    return self.check_protected(&lexical, access, &origin);
                 }
                 if std::fs::symlink_metadata(&path).is_ok() {
                     return Err(PolicyError::DanglingSymlink {
@@ -330,10 +333,36 @@ impl Builder<'_> {
                 };
                 match std::fs::canonicalize(parent) {
                     Ok(parent) => self.grant(parent.join(name), access, origin, true),
-                    Err(_) => Ok(()),
+                    Err(_) => {
+                        let lexical = nearest_canonical(&path);
+                        self.check_protected(&lexical, access, &origin)
+                    }
                 }
             }
             Err(e) => Err(self.io_err(&path, e)),
+        }
+    }
+}
+
+/// Canonicalizes the longest existing ancestor of `path` and appends the rest unchanged.
+/// Used to name paths that do not exist (yet) in protection checks.
+fn nearest_canonical(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut cur = path;
+    loop {
+        if let Ok(base) = std::fs::canonicalize(cur) {
+            let mut out = base;
+            for part in rest.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        match (cur.parent(), cur.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_os_string());
+                cur = parent;
+            }
+            _ => return path.to_path_buf(),
         }
     }
 }
@@ -501,6 +530,17 @@ operands = "r"
             "{msg}"
         );
         assert!(msg.contains("--grant ~/.ssh/id_rsa:r"), "{msg}");
+    }
+
+    #[test]
+    fn missing_protected_file_is_still_refused() {
+        let f = fixture();
+        let err = run(CAT, &f, &["../.ssh/nope"], &[]).expect_err("refused");
+        assert!(err.to_string().contains("~/.ssh is protected"), "{err}");
+        let err = run(CAT, &f, &["../.aws/credentials"], &[]).expect_err("refused");
+        assert!(err.to_string().contains("~/.aws is protected"), "{err}");
+        // A missing, unprotected file is simply not granted.
+        assert!(run(CAT, &f, &["missing.txt"], &[]).is_ok());
     }
 
     #[test]
