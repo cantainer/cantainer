@@ -38,6 +38,10 @@ class Cantainer < Formula
 
   def install
     bin.install "cant"
+    bash_completion.install "completions/cant.bash" => "cant"
+    zsh_completion.install "completions/_cant"
+    fish_completion.install "completions/cant.fish"
+    man1.install Dir["man/*.1.gz"]
     doc.install "README.md", "CHANGELOG.md"
   end
 

@@ -46,6 +46,10 @@ package() {
   cd "cant-v$version-\$CARCH-unknown-linux-musl"
   install -Dm755 cant "\$pkgdir/usr/bin/cant"
   install -dm755 "\$pkgdir/etc/cantainer/cants"
+  install -Dm644 completions/cant.bash "\$pkgdir/usr/share/bash-completion/completions/cant"
+  install -Dm644 completions/_cant "\$pkgdir/usr/share/zsh/site-functions/_cant"
+  install -Dm644 completions/cant.fish "\$pkgdir/usr/share/fish/vendor_completions.d/cant.fish"
+  install -Dm644 -t "\$pkgdir/usr/share/man/man1" man/*.1.gz
   install -Dm644 -t "\$pkgdir/usr/share/doc/cantainer" README.md CHANGELOG.md
   install -Dm644 -t "\$pkgdir/usr/share/licenses/\$pkgname" LICENSE-MIT LICENSE-APACHE
 }

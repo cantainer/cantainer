@@ -28,9 +28,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 # Stage the file tree a package installs: binary, docs, licenses.
-stage() { # stage SRC DEST
-  local src="$1" dest="$2"
+stage() { # stage SRC DEST ZSHDIR (Debian and Fedora look for zsh completions in different places)
+  local src="$1" dest="$2" zshdir="$3"
   install -Dm755 "$src/cant" "$dest/usr/bin/cant"
+  install -Dm644 "$src/completions/cant.bash" "$dest/usr/share/bash-completion/completions/cant"
+  install -Dm644 "$src/completions/_cant" "$dest$zshdir/_cant"
+  install -Dm644 "$src/completions/cant.fish" "$dest/usr/share/fish/vendor_completions.d/cant.fish"
+  install -Dm644 -t "$dest/usr/share/man/man1" "$src"/man/*.1.gz
   install -dm755 "$dest/etc/cantainer/cants"
   install -Dm644 -t "$dest/usr/share/doc/cantainer" "$src/README.md" "$src/CHANGELOG.md"
   install -Dm644 -t "$dest/usr/share/licenses/cantainer" "$src/LICENSE-MIT" "$src/LICENSE-APACHE"
@@ -38,7 +42,7 @@ stage() { # stage SRC DEST
 
 build_deb() { # build_deb SRC DEBARCH
   local src="$1" arch="$2" pkg="$work/deb-$2"
-  stage "$src" "$pkg"
+  stage "$src" "$pkg" /usr/share/zsh/vendor-completions
   # Debian policy wants the license text in /usr/share/doc/PACKAGE/copyright.
   {
     echo "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/"
@@ -107,10 +111,14 @@ cp -a $top/stage/. %{buildroot}/
 /usr/bin/cant
 %dir /etc/cantainer
 %dir /etc/cantainer/cants
+/usr/share/bash-completion/completions/cant
+/usr/share/zsh/site-functions/_cant
+/usr/share/fish/vendor_completions.d/cant.fish
+/usr/share/man/man1/cant*.1.gz
 %doc /usr/share/doc/cantainer
 %license /usr/share/licenses/cantainer
 EOF
-  stage "$src" "$top/stage"
+  stage "$src" "$top/stage" /usr/share/zsh/site-functions
   find "$top/stage" -type d -exec chmod 0755 {} +
   rpmbuild --quiet -bb --target "$arch-linux" \
     --define "_topdir $top" \
