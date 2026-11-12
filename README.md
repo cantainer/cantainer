@@ -46,6 +46,15 @@ The long-term goal is a Linux system with no shared userland, where every comman
 
 ### Linux (kernel ≥ 6.2; ≥ 6.7 for Landlock network rules)
 
+Install from crates.io:
+
+```sh
+cargo install cantainer             # installs the `cant` binary
+cant check                          # can this kernel sandbox cants?
+```
+
+Or build from source, which also gives you the example manifests:
+
 ```sh
 git clone https://github.com/cantainer/cantainer && cd cantainer
 cargo build --release
