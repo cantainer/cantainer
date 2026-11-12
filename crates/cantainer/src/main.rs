@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 mod catalog;
+mod scaffold;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -62,6 +63,14 @@ enum Command {
     },
     /// List the cants that `cant run NAME` can find, and where each comes from
     List,
+    /// Write a starting manifest for a program to ~/.config/cantainer/cants/, denying everything
+    New {
+        /// Program name (looked up in the system bin directories) or absolute path
+        program: String,
+        /// Overwrite an existing manifest, or shadow a built-in one
+        #[arg(long)]
+        force: bool,
+    },
     /// Check whether this kernel can sandbox cants
     Check,
 }
@@ -132,6 +141,7 @@ fn main() -> ExitCode {
         Command::Inspect { cant } => inspect(&cant, &mut out),
         Command::Show { cant } => show(&cant, &mut out),
         Command::List => list(&mut out),
+        Command::New { program, force } => new(&program, force, &mut out),
         Command::Check => Ok(check(&mut out)),
     };
     if let Err(e) = write_stdout(&out) {
@@ -340,6 +350,56 @@ fn list(out: &mut String) -> Result<ExitCode, Failure> {
             .unwrap_or_else(|e| format!("(invalid: {e})"));
         outln!(out, "{:<12} {description:<60} {}", entry.name, entry.source);
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn new(program: &str, force: bool, out: &mut String) -> Result<ExitCode, Failure> {
+    let (name, entry, found) = if program.contains('/') {
+        let found =
+            std::fs::canonicalize(program).map_err(|e| Failure::new(format!("{program}: {e}")))?;
+        let name = found
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(str::to_ascii_lowercase)
+            .ok_or_else(|| Failure::new(format!("{program}: no usable file name")))?;
+        (name, found.display().to_string(), found)
+    } else {
+        let found = cant_policy::find_program(program).ok_or_else(|| {
+            Failure::new(format!(
+                "no program `{program}` in {}; give its absolute path instead",
+                cant_policy::SYSTEM_BIN_DIRS.join(", ")
+            ))
+        })?;
+        (program.to_owned(), program.to_owned(), found)
+    };
+    cant_manifest::validate_name(&name).map_err(Failure::new)?;
+
+    let catalog = Catalog::standard(&home_dir()?);
+    let dest = scaffold::destination(&catalog.dirs[0], &name);
+    if !force {
+        if dest.exists() {
+            return Err(Failure::new(format!(
+                "{} already exists (--force overwrites it)",
+                dest.display()
+            )));
+        }
+        if catalog::BUILTIN.iter().any(|(n, _)| *n == name) {
+            return Err(Failure::new(format!(
+                "`{name}` has a built-in manifest; to customize it: cant show {name} > {} \
+                 (--force writes an empty one instead)",
+                dest.display()
+            )));
+        }
+    }
+    let dir = dest.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir).map_err(|e| Failure::new(format!("{}: {e}", dir.display())))?;
+    std::fs::write(&dest, scaffold::template(&name, &entry, &found))
+        .map_err(|e| Failure::new(format!("{}: {e}", dest.display())))?;
+    outln!(out, "wrote {}", dest.display());
+    outln!(
+        out,
+        "It denies everything. Edit it, then check a run with: cant run --explain {name} ARGS..."
+    );
     Ok(ExitCode::SUCCESS)
 }
 

@@ -17,6 +17,10 @@ mkdir -p ~/.config/cantainer/cants
 cant show git > ~/.config/cantainer/cants/git.toml
 ```
 
+For a program without a manifest, `cant new PROGRAM` writes a commented starting point to
+`~/.config/cantainer/cants/PROGRAM.toml`. It denies everything; open up what the program needs
+and check the result with `cant run --explain PROGRAM ARGS...`.
+
 Cants can read `~/.config/cantainer` but never write it, so a cant can't change its own or
 another cant's manifest.
 

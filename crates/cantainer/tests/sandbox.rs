@@ -225,6 +225,38 @@ fn explain_does_not_run() {
     assert!(!out.contains("hello"), "explain must not run cat");
 }
 
+// ---- cant new ------------------------------------------------------------------------------
+
+#[test]
+fn new_writes_a_deny_all_manifest_that_runs() {
+    if !supported() || !have("sh") {
+        return;
+    }
+    let f = Fixture::new();
+    let o = f.cant(&["new", "sh"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let written = f.home.join(".config/cantainer/cants/sh.toml");
+    assert!(
+        stdout(&o).contains(&written.display().to_string()),
+        "{}",
+        stdout(&o)
+    );
+
+    // It runs, by name, and can't read a file it wasn't given.
+    let o = f.cant(&["run", "sh", "-c", "exit 3"]);
+    assert_eq!(o.status.code(), Some(3), "{}", stderr(&o));
+    let o = f.cant(&["run", "sh", "-c", "read x < notes.txt"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+
+    // Never overwrites without --force, and points at `cant show` for built-in names.
+    let o = f.cant(&["new", "sh"]);
+    assert_eq!(o.status.code(), Some(125));
+    assert!(stderr(&o).contains("already exists"), "{}", stderr(&o));
+    let o = f.cant(&["new", "cat"]);
+    assert_eq!(o.status.code(), Some(125));
+    assert!(stderr(&o).contains("cant show cat"), "{}", stderr(&o));
+}
+
 // ---- Process behaviour -----------------------------------------------------------------------
 
 fn sh_manifest(f: &Fixture, extra: &str) -> PathBuf {

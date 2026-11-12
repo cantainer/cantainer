@@ -20,6 +20,7 @@ Security-relevant changes are listed under **Security**.
   Lookup order: `~/.config/cantainer/cants`, then `/etc/cantainer/cants` (new), then built in.
 - `cant show NAME` prints a manifest, for example to copy and customize it.
 - `cant list` shows where each manifest comes from.
+- `cant new PROGRAM` writes a commented, deny-everything manifest to fill in.
 
 ### Changed
 - The example manifests moved from `examples/` to `crates/cantainer/cants/`.
