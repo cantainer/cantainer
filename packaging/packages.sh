@@ -119,9 +119,8 @@ EOF
   cp "$top/RPMS/$arch/cantainer-$pkgversion-$release.$arch.rpm" "$dist/"
 }
 
-for spec in "x86_64 amd64" "aarch64 arm64"; do
-  set -- $spec
-  arch="$1" debarch="$2"
+for arch in x86_64 aarch64; do
+  case "$arch" in x86_64) debarch=amd64 ;; aarch64) debarch=arm64 ;; esac
   name="cant-v$version-$arch-unknown-linux-musl"
   tar -xzf "$dist/$name.tar.gz" -C "$work"
   build_deb "$work/$name" "$debarch"

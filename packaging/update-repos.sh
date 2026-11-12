@@ -98,4 +98,4 @@ EOF
 
 # Pages serves files as they are, so the checkout must not keep stray modes from the sandbox.
 find "$repo" -path "$repo/.git" -prune -o -type d -exec chmod 0755 {} + -o -type f -exec chmod 0644 {} +
-echo "update-repos: $(ls "$apt/pool/main" | wc -l) .deb, $(find "$rpmdir" -name '*.rpm' | wc -l) .rpm"
+echo "update-repos: $(find "$apt/pool/main" -name '*.deb' | wc -l) .deb, $(find "$rpmdir" -name '*.rpm' | wc -l) .rpm"
