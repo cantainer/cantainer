@@ -57,7 +57,10 @@ cargo update --workspace --quiet
 # Changelog: new section under Unreleased, and comparison links.
 today="$(date -u +%Y-%m-%d)"
 perl -pi -e "s/^## \[Unreleased\]\$/## [Unreleased]\n\n## [$new] - $today/" CHANGELOG.md
-perl -pi -e "s|^\[Unreleased\]: .*\$|[Unreleased]: $repo_url/compare/v$new...HEAD\n[$new]: $repo_url/compare/v$current...v$new|" CHANGELOG.md
+# Compare against the version the Unreleased link starts from (the last published one).
+base="$(sed -n 's|^\[Unreleased\]: .*/compare/\(v[^/]*\)\.\.\.HEAD$|\1|p' CHANGELOG.md)"
+base="${base:-v$current}"
+perl -pi -e "s|^\[Unreleased\]: .*\$|[Unreleased]: $repo_url/compare/v$new...HEAD\n[$new]: $repo_url/compare/$base...v$new|" CHANGELOG.md
 
 # --- Checks ----------------------------------------------------------------------------------
 cargo fmt --all -- --check
