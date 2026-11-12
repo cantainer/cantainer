@@ -111,7 +111,8 @@ Prepare `crates/cantainer` to publish as `cantainer` 0.0.1 with real, working fu
   around it quietly.
 - Prefer boring, explicit code. This is security software: correctness and clear errors beat cleverness.
 - Commit in small, logical steps with clear messages.
-- **Never run `cargo publish` or push to the remote without asking first.**
+- Push each commit to `main` (the maintainer asked for small commits and pushes, 2026-11-11).
+- **Never run `cargo publish` without asking first.**
 
 ## Design decisions
 Recorded in `docs/ARCHITECTURE.md` (decisions and rejected alternatives); keep it current.
