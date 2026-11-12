@@ -119,6 +119,11 @@ pub struct Capabilities {
     /// May create Unix domain sockets (and so reach local services such as D-Bus).
     #[serde(default)]
     pub unix_sockets: bool,
+    /// May change file permissions by path (`chmod`), to modes within `0775` only. Linkers
+    /// such as GNU ld need this; Landlock doesn't control permission changes, so it applies to
+    /// any path, including files the cant can't open.
+    #[serde(default)]
+    pub chmod_by_path: bool,
     /// Filesystem paths.
     #[serde(default)]
     pub fs: FsCapabilities,

@@ -131,6 +131,7 @@ Grants for files named on the command line:
 | `fs.ro` | `[]` | Paths to read: a file, or a whole directory tree. |
 | `fs.rw` | `[]` | Paths to read and write: create, modify, rename and delete within. |
 | `exec` | `[]` | Programs this cant may execute: absolute paths, directories (everything beneath), or bare names. |
+| `chmod_by_path` | `false` | May change permissions by path (`chmod`), to modes within `0775` (no setuid, setgid, sticky or other-write). Needed by GNU ld, which marks the programs it links executable this way. It applies to any path, including files the cant can't open; see [SECURITY.md](../SECURITY.md). |
 | `cants` | `[]` | Cants this cant may run with `cant run NAME` (for example an agent's shell: `cants = ["git", "rg"]`). See below. |
 
 Paths in `fs.ro`, `fs.rw` and `exec` take one of these forms:

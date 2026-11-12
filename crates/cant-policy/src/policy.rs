@@ -78,6 +78,9 @@ pub struct Policy {
     /// May open Unix domain sockets.
     #[serde(default)]
     pub unix_sockets: bool,
+    /// May change permissions by path, to modes within `0775` (see `capabilities.chmod_by_path`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chmod_by_path: bool,
     /// Environment variables that pass through.
     #[serde(default)]
     pub env: Vec<EnvPattern>,
@@ -142,6 +145,7 @@ pub fn intersect(parent: &Policy, child: &Policy) -> Policy {
         grants: Vec::new(),
         network: parent.network && child.network,
         unix_sockets: parent.unix_sockets && child.unix_sockets,
+        chmod_by_path: parent.chmod_by_path && child.chmod_by_path,
         env: Vec::new(),
     };
     for c in &child.grants {
@@ -227,6 +231,7 @@ mod tests {
             grants: vec![g("/home/u/proj", Access::RW), g("/usr", Access::RX)],
             network: true,
             unix_sockets: false,
+            chmod_by_path: true,
             env: vec![pat("LC_*"), pat("TERM")],
         };
         let child = Policy {
@@ -238,6 +243,7 @@ mod tests {
             ],
             network: false,
             unix_sockets: true,
+            chmod_by_path: true,
             env: vec![pat("LC_ALL"), pat("HOME"), pat("TERM")],
         };
         let eff = intersect(&parent, &child);
@@ -271,6 +277,7 @@ mod tests {
             grants: vec![g("/", Access::RW)],
             network: true,
             unix_sockets: true,
+            chmod_by_path: true,
             env: vec![pat("TERM")],
         };
         let eff = intersect(&Policy::default(), &child);
@@ -290,6 +297,7 @@ mod tests {
             ],
             network: true,
             unix_sockets: false,
+            chmod_by_path: true,
             env: vec![pat("LC_*")],
         };
         let text = p.to_toml().expect("serialize");

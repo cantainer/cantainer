@@ -49,6 +49,9 @@ Security-relevant changes are listed under **Security**.
   (`cant run ./examples/x.toml`) or put the manifest in `~/.config/cantainer/cants/`.
 
 ### Fixed
+- Programs linked by GNU ld inside a cant (Rust on aarch64, C everywhere) came out without the
+  executable bit, because path-based `chmod` was refused. Manifests can now declare
+  `capabilities.chmod_by_path`, limited to modes within `0775`; `cargo` and `cargo-net` do.
 - `cant-launch` builds for aarch64 with musl and for riscv64 (it used a syscall constant the
   `libc` crate doesn't define there).
 - A static program in a cant (rustup on arm64) can start dynamically linked programs from an

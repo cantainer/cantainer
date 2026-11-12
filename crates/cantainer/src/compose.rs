@@ -61,6 +61,7 @@ pub fn include_cants(
         }
         built.policy.network |= child.policy.network;
         built.policy.unix_sockets |= child.policy.unix_sockets;
+        built.policy.chmod_by_path |= child.policy.chmod_by_path;
         for pattern in child.policy.env {
             if !built.policy.env.contains(&pattern) {
                 built.policy.env.push(pattern);

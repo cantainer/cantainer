@@ -124,6 +124,23 @@ It refuses:
   could already open. vim and git work with this.
 - terminal injection: `ioctl(TIOCSTI)` and `ioctl(TIOCLINUX)`.
 
+**`chmod_by_path`.** GNU ld writes a program and then sets its executable bit with
+`chmod(path)`. Rust links with it on aarch64 (rust-lld on x86_64 since 1.90), and gcc links C
+programs with it everywhere, so inside a cant every build script came out without the
+executable bit (found by the first 0.0.2 release build on arm64). Manifests that run linkers
+(`cargo`, `cargo-net`) declare `capabilities.chmod_by_path = true`, which lets path-based chmod
+through unless the mode has setuid, setgid, sticky or other-write bits; seccomp checks the mode
+argument. Group write is allowed because Ubuntu's default umask for users with a private group
+is 002, and GNU ld then asks for 0775. Nested cants get it only if every level has it.
+
+Rejected:
+
+- **Allowing it for every cant**: weakens every cant to fix linkers.
+- **Forcing lld in the cargo cant**: not installed everywhere, and gcc links C programs with
+  GNU ld anyway.
+- **Making chmod pretend to succeed** (`SECCOMP_RET_ERRNO` with 0): the file still lacks the
+  executable bit.
+
 `clone3` returns `ENOSYS`: its flags are in memory seccomp can't read, and glibc falls back to
 `clone`, whose flags *can* be checked. On x86_64, a hand-written guard filter refuses x32 syscall
 numbers (`nr ≥ 0x40000000`). They share the x86_64 audit arch, and seccompiler only checks the

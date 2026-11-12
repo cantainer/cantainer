@@ -35,6 +35,11 @@ const SYS_KEXEC_FILE_LOAD: i64 = 320;
 #[cfg(not(target_arch = "x86_64"))]
 const SYS_KEXEC_FILE_LOAD: i64 = 294;
 
+/// Mode bits a path-based chmod may never set, even with `chmod_by_path`: setuid, setgid,
+/// sticky, other write. Group write stays allowed: with umask 002 (Ubuntu's default for users
+/// with a private group) GNU ld asks for 0775.
+const CHMOD_FORBIDDEN_BITS: [u64; 4] = [0o4000, 0o2000, 0o1000, 0o002];
+
 fn err(e: impl std::fmt::Display) -> LaunchError {
     LaunchError::Seccomp(e.to_string())
 }
@@ -106,8 +111,7 @@ fn denied_syscalls() -> Vec<i64> {
         libc::SYS_name_to_handle_at,
         // Path-based metadata changes, which Landlock does not control.
         // (fd-based fchmod/fchown/fsetxattr/futimens stay allowed: they need an open file.)
-        libc::SYS_fchmodat,
-        SYS_FCHMODAT2,
+        // fchmodat, fchmodat2 and chmod are handled in `eperm_filter` (chmod_by_path).
         libc::SYS_fchownat,
         libc::SYS_setxattr,
         libc::SYS_lsetxattr,
@@ -118,7 +122,6 @@ fn denied_syscalls() -> Vec<i64> {
     ];
     #[cfg(target_arch = "x86_64")]
     v.extend([
-        libc::SYS_chmod,
         libc::SYS_chown,
         libc::SYS_lchown,
         libc::SYS_utime,
@@ -174,6 +177,30 @@ fn eperm_filter(policy: &Policy, arch: TargetArch) -> Result<BpfProgram, LaunchE
             rule(vec![cond(1, Len::Dword, Op::Eq, tioclinux)?])?,
         ],
     );
+
+    // Path-based chmod: refused, or with `chmod_by_path` refused only for modes outside 0775
+    // (setuid, setgid, sticky, other write), so a cant can't make files world-writable or
+    // setuid. The mode is argument 2 of fchmodat/fchmodat2, 1 of chmod.
+    let mut chmods = vec![(libc::SYS_fchmodat, 2), (SYS_FCHMODAT2, 2)];
+    #[cfg(target_arch = "x86_64")]
+    chmods.push((libc::SYS_chmod, 1));
+    for (nr, mode_arg) in chmods {
+        let deny = if policy.chmod_by_path {
+            let mut r = Vec::new();
+            for bit in CHMOD_FORBIDDEN_BITS {
+                r.push(rule(vec![cond(
+                    mode_arg,
+                    Len::Dword,
+                    Op::MaskedEq(bit),
+                    bit,
+                )?])?);
+            }
+            r
+        } else {
+            Vec::new() // always
+        };
+        rules.insert(nr, deny);
+    }
 
     // utimensat with a path (a NULL path means "this fd", like futimens).
     rules.insert(
@@ -277,14 +304,17 @@ mod tests {
         let arch = target_arch().expect("supported arch");
         for (network, unix_sockets) in [(false, false), (false, true), (true, false), (true, true)]
         {
-            let p = Policy {
-                network,
-                unix_sockets,
-                ..Policy::default()
-            };
-            let prog = eperm_filter(&p, arch).expect("compiles");
-            assert!(!prog.is_empty());
-            assert!(prog.len() < 4096, "BPF_MAXINSNS");
+            for chmod_by_path in [false, true] {
+                let p = Policy {
+                    network,
+                    unix_sockets,
+                    chmod_by_path,
+                    ..Policy::default()
+                };
+                let prog = eperm_filter(&p, arch).expect("compiles");
+                assert!(!prog.is_empty());
+                assert!(prog.len() < 4096, "BPF_MAXINSNS");
+            }
         }
         assert!(!clone3_filter(arch).expect("compiles").is_empty());
     }

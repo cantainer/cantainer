@@ -281,6 +281,39 @@ fn exec_directories_get_the_dynamic_loader() {
     );
 }
 
+#[test]
+fn chmod_by_path_is_limited_to_safe_modes() {
+    if !supported() || !have("chmod") {
+        return;
+    }
+    let f = Fixture::new();
+    let m = f.manifest(
+        "chmod",
+        "[entrypoint]\npath = \"chmod\"\n[args]\noperands = \"rw\"\n\
+         [capabilities]\nchmod_by_path = true\n",
+    );
+    let m = m.to_str().expect("utf8");
+    let mode = || {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(f.work.join("notes.txt"))
+            .expect("stat")
+            .permissions()
+            .mode()
+            & 0o7777
+    };
+    let o = f.cant(&["run", m, "750", "notes.txt"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(mode(), 0o750);
+    let o = f.cant(&["run", m, "770", "notes.txt"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(mode(), 0o770);
+    for bad in ["777", "u+s", "g+s", "o+w", "1770"] {
+        let o = f.cant(&["run", m, bad, "notes.txt"]);
+        assert!(!o.status.success(), "chmod {bad} must fail");
+        assert_eq!(mode(), 0o770, "chmod {bad} changed the mode");
+    }
+}
+
 // ---- Process behaviour -----------------------------------------------------------------------
 
 fn sh_manifest(f: &Fixture, extra: &str) -> PathBuf {
@@ -799,6 +832,42 @@ fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
             .output()
             .expect("run cargo")
     };
+
+    // GNU ld sets the executable bit with chmod(path); make sure that works where it exists
+    // (Rust uses it by default on aarch64, rust-lld on x86_64).
+    // (Some sandboxes create every file writable by others; ld then asks for o+w, which is
+    // refused by design, so the check can't run there.)
+    let others_can_write_new_files = {
+        use std::os::unix::fs::PermissionsExt;
+        let probe = f.work.join("probe");
+        std::fs::write(&probe, "").expect("probe");
+        let mode = std::fs::metadata(&probe)
+            .expect("stat")
+            .permissions()
+            .mode();
+        std::fs::remove_file(&probe).expect("rm probe");
+        mode & 0o002 != 0
+    };
+    if others_can_write_new_files {
+        eprintln!("SKIP: new files are writable by others here; not testing ld.bfd");
+    } else if cant_policy::find_program("ld.bfd").is_some() {
+        let o = f
+            .command(&["run", m, "run", "-q"])
+            .env("RUSTUP_HOME", &rustup_home)
+            .env("PATH", format!("{}:/usr/bin:/bin", cargo_bin.display()))
+            .env("RUSTFLAGS", "-C link-arg=-fuse-ld=bfd")
+            .env("CARGO_TARGET_DIR", f.work.join("target-bfd"))
+            .stdin(Stdio::null())
+            .output()
+            .expect("run cargo with ld.bfd");
+        assert!(
+            o.status.success(),
+            "with ld.bfd: {}{}",
+            stdout(&o),
+            stderr(&o)
+        );
+        assert_eq!(stdout(&o), "built\n");
+    }
 
     let o = run(&["run", "-q"]);
     if !o.status.success() {

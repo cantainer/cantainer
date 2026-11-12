@@ -383,6 +383,7 @@ pub fn build(
         policy: Policy {
             network: manifest.capabilities.network,
             unix_sockets: manifest.capabilities.unix_sockets,
+            chmod_by_path: manifest.capabilities.chmod_by_path,
             env: manifest.env_patterns(),
             grants: Vec::new(),
         },
