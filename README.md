@@ -42,18 +42,54 @@ makes the **executable** the unit of isolation:
 The long-term goal is a Linux system with no shared userland, where every command is a cant. See
 [docs/VISION.md](docs/VISION.md).
 
+## Install
+
+Cantainer needs Linux ≥ 6.2 (≥ 6.7 for Landlock network rules). Every channel installs the same
+static `cant` binary for x86_64 or aarch64, built and signed by the
+[release workflow](docs/RELEASING.md). The packages, the APT/RPM repositories and the Homebrew
+tap start with 0.0.2.
+
+**Debian, Ubuntu** (APT):
+
+```sh
+sudo curl -fsSLo /etc/apt/keyrings/cantainer.asc https://cantainer.github.io/packages/signing-key.asc
+echo "deb [signed-by=/etc/apt/keyrings/cantainer.asc] https://cantainer.github.io/packages/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/cantainer.list
+sudo apt update && sudo apt install cantainer
+```
+
+**Fedora, RHEL, openSUSE** (RPM):
+
+```sh
+sudo curl -fsSLo /etc/yum.repos.d/cantainer.repo https://cantainer.github.io/packages/rpm/cantainer.repo
+sudo dnf install cantainer          # zypper: add the same .repo file, then zypper install cantainer
+```
+
+**Homebrew on Linux:** `brew install cantainer/tap/cantainer`
+
+**Arch Linux:** `cantainer-bin` on the AUR (coming soon).
+
+**Cargo:** `cargo binstall cantainer` (prebuilt) or `cargo install cantainer` (from source).
+
+**Anything else:** download `cant-vX-<arch>-unknown-linux-musl.tar.gz` from the
+[releases](https://github.com/cantainer/cantainer/releases) and check it against `SHA256SUMS`,
+which is signed with the [package key](packaging/signing-key.asc)
+(`93B1 11A2 5A48 73A3 2AFA  EF6D DEC0 3DB8 3F0D 540B`).
+
+Then:
+
+```sh
+cant check                          # can this kernel sandbox cants?
+```
+
+Packages put the example manifests in `/usr/share/doc/cantainer/examples` (Homebrew:
+`$(brew --prefix)/share/cantainer/examples`).
+
 ## Quickstart
 
 ### Linux (kernel ≥ 6.2; ≥ 6.7 for Landlock network rules)
 
-Install from crates.io:
-
-```sh
-cargo install cantainer             # installs the `cant` binary
-cant check                          # can this kernel sandbox cants?
-```
-
-Or build from source, which also gives you the example manifests:
+Build from source, which also gives you the example manifests:
 
 ```sh
 git clone https://github.com/cantainer/cantainer && cd cantainer
@@ -208,9 +244,10 @@ crates/cant-policy     capability model, powerbox, protected paths, attenuation
 crates/cant-launch     ELF resolution, Landlock, seccomp, exec
 crates/cant-store      content digests; future content-addressed store
 examples/              manifests for cat, curl, git, vim
-docs/                  VISION, ARCHITECTURE, MANIFEST
+docs/                  VISION, ARCHITECTURE, MANIFEST, RELEASING
 benches/startup.sh     startup benchmark
-dev/                   Lima VM config and kernel check
+dev/                   Lima VM config, kernel check, release script
+packaging/             release tarball, .deb/.rpm, APT/RPM repos, Homebrew, AUR; signing key
 demo/demo.tape         README demo recording
 ```
 
