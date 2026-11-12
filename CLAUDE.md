@@ -154,7 +154,8 @@ Open items:
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
   secrets (Trusted Publishing worked for 0.0.3).
 - Not yet verified by hand: `dnf install cantainer` from the RPM repo, `brew install
-  cantainer/tap/cantainer` on Linux.
+  cantainer/tap/cantainer` on Linux. (On macOS it refuses cleanly, "Linux is required",
+  verified by the maintainer after the formula fix in 907a34c.)
 - AUR: registration was closed on 2026-11-12. When it reopens: account, SSH key, secret
   `AUR_SSH_KEY` (steps in `docs/RELEASING.md`).
 - Distro submissions (each needs the maintainer's OK before any external PR or issue):
