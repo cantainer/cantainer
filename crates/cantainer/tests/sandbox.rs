@@ -7,14 +7,10 @@
 #![cfg(target_os = "linux")]
 
 use std::net::TcpListener;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
 const CANT: &str = env!("CARGO_BIN_EXE_cant");
-
-fn examples() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
-}
 
 /// Whether sandbox tests can run here; prints why not.
 fn supported() -> bool {
@@ -95,13 +91,6 @@ fn stderr(o: &Output) -> String {
     String::from_utf8_lossy(&o.stderr).into_owned()
 }
 
-fn example(name: &str) -> String {
-    examples()
-        .join(format!("{name}.toml"))
-        .display()
-        .to_string()
-}
-
 // ---- The demo -------------------------------------------------------------------------------
 
 #[test]
@@ -111,7 +100,7 @@ fn demo_cat_secret_is_denied() {
     }
     let f = Fixture::new();
     let key = f.home.join(".ssh/id_rsa");
-    let o = f.cant(&["run", &example("cat"), key.to_str().expect("utf8")]);
+    let o = f.cant(&["run", "cat", key.to_str().expect("utf8")]);
     assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
     assert!(
         stderr(&o).contains("cant: cat can't read ~/.ssh/id_rsa (~/.ssh is protected)"),
@@ -127,7 +116,7 @@ fn demo_cat_named_file_works() {
         return;
     }
     let f = Fixture::new();
-    let o = f.cant(&["run", &example("cat"), "notes.txt"]);
+    let o = f.cant(&["run", "cat", "notes.txt"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(stdout(&o), "hello\n");
 }
@@ -143,7 +132,7 @@ fn demo_curl_has_no_network() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     listener.set_nonblocking(true).expect("nonblocking");
     let url = format!("http://{}/", listener.local_addr().expect("addr"));
-    let o = f.cant(&["run", &example("curl"), "-sS", "--max-time", "5", &url]);
+    let o = f.cant(&["run", "curl", "-sS", "--max-time", "5", &url]);
     assert!(!o.status.success(), "curl must fail: {}", stdout(&o));
     assert!(
         listener.accept().is_err(),
@@ -159,7 +148,7 @@ fn demo_vim_edits_only_the_named_file() {
     let f = Fixture::new();
     let o = f.cant(&[
         "run",
-        &example("vim"),
+        "vim",
         "-es",
         "-c",
         "normal Goworld",
@@ -175,16 +164,7 @@ fn demo_vim_edits_only_the_named_file() {
 
     let other = f.work.join("other.txt");
     let cmd = format!("w! {}", other.display());
-    let o = f.cant(&[
-        "run",
-        &example("vim"),
-        "-es",
-        "-c",
-        &cmd,
-        "-c",
-        "q!",
-        "notes.txt",
-    ]);
+    let o = f.cant(&["run", "vim", "-es", "-c", &cmd, "-c", "q!", "notes.txt"]);
     assert!(!o.status.success());
     assert!(!other.exists(), "vim wrote a file it was not given");
 }
@@ -212,7 +192,7 @@ fn symlink_to_secret_is_refused() {
     let f = Fixture::new();
     std::os::unix::fs::symlink(f.home.join(".ssh/id_rsa"), f.work.join("innocent.txt"))
         .expect("symlink");
-    let o = f.cant(&["run", &example("cat"), "innocent.txt"]);
+    let o = f.cant(&["run", "cat", "innocent.txt"]);
     assert_eq!(o.status.code(), Some(125));
     assert!(stderr(&o).contains("~/.ssh/id_rsa"), "{}", stderr(&o));
 }
@@ -225,7 +205,7 @@ fn explicit_grant_unlocks_a_protected_file() {
     let f = Fixture::new();
     let key = f.home.join(".ssh/id_rsa");
     let key = key.to_str().expect("utf8");
-    let o = f.cant(&["run", "--grant", key, &example("cat"), key]);
+    let o = f.cant(&["run", "--grant", key, "cat", key]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(stdout(&o), "PRIVATE KEY\n");
 }
@@ -236,7 +216,7 @@ fn explain_does_not_run() {
         return;
     }
     let f = Fixture::new();
-    let o = f.cant(&["run", "--explain", &example("cat"), "notes.txt"]);
+    let o = f.cant(&["run", "--explain", "cat", "notes.txt"]);
     assert!(o.status.success(), "{}", stderr(&o));
     let out = stdout(&o);
     assert!(out.contains("~/proj/notes.txt"), "{out}");
@@ -272,7 +252,7 @@ fn stdin_passes_through() {
     }
     let f = Fixture::new();
     let mut child = f
-        .command(&["run", &example("cat")])
+        .command(&["run", "cat"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -349,23 +329,16 @@ fn nested_cant_cannot_widen_rights() {
     }
     let f = Fixture::new();
     let cant_bin = std::fs::canonicalize(CANT).expect("cant path");
-    let cat_manifest = examples().join("cat.toml");
-    let cat_manifest = std::fs::canonicalize(cat_manifest).expect("cat manifest");
-    // An "agent shell" that may run cant and cat, and read the cat manifest, but holds no
-    // grant on notes.txt.
+    // An "agent shell" that may run cant and cat, but holds no grant on notes.txt. The nested
+    // `cant run cat` uses the built-in cat manifest.
     let m = sh_manifest(
         &f,
         &format!(
-            "[capabilities]\nexec = [\"{}\", \"cat\"]\nfs.ro = [\"{}\"]\n[env]\npass = [\"HOME\"]\n",
-            cant_bin.display(),
-            cat_manifest.display()
+            "[capabilities]\nexec = [\"{}\", \"cat\"]\n[env]\npass = [\"HOME\"]\n",
+            cant_bin.display()
         ),
     );
-    let inner = format!(
-        "{} run {} notes.txt",
-        cant_bin.display(),
-        cat_manifest.display()
-    );
+    let inner = format!("{} run cat notes.txt", cant_bin.display());
     let o = f.cant(&["run", m.to_str().expect("utf8"), "-c", &inner]);
     assert_eq!(o.status.code(), Some(125), "{}{}", stdout(&o), stderr(&o));
     assert!(

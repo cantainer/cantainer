@@ -653,28 +653,4 @@ pass = ["*", "LD_PRELOAD", "L*", "9X"]
         assert_eq!(p("TERM").intersect(&p("TERM")), Some(p("TERM")));
         assert_eq!(p("TERM").intersect(&p("HOME")), None);
     }
-
-    #[test]
-    fn example_manifests_are_valid() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
-        if !dir.is_dir() {
-            eprintln!("SKIP: no examples directory (running from a published crate)");
-            return;
-        }
-        let mut seen = 0;
-        for entry in std::fs::read_dir(&dir).expect("examples dir") {
-            let path = entry.expect("entry").path();
-            if path.extension().is_some_and(|e| e == "toml") {
-                let m = Manifest::from_file(&path)
-                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-                assert_eq!(
-                    Some(m.name.as_str()),
-                    path.file_stem().and_then(|s| s.to_str()),
-                    "file name must match manifest name"
-                );
-                seen += 1;
-            }
-        }
-        assert!(seen >= 4, "expected the cat, curl, git and vim examples");
-    }
 }

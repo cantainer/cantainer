@@ -4,13 +4,15 @@
 
 #![forbid(unsafe_code)]
 
+mod catalog;
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use cant_launch::{LaunchError, POLICY_ENV, Plan};
-use cant_manifest::{Manifest, validate_name};
 use cant_policy::{Context, Origin, Policy, PolicyError, UserGrant, display_path};
+use catalog::{Catalog, Found, Source};
 use clap::{Parser, Subcommand};
 
 /// Exit status for refusals and errors of `cant` itself (as `env`, `nohup` and container
@@ -40,7 +42,13 @@ enum Command {
         /// Cant name or path to a manifest
         cant: String,
     },
-    /// List the cants that `cant run NAME` can find
+    /// Print a cant's manifest, e.g. to customize it:
+    /// `cant show git > ~/.config/cantainer/cants/git.toml`
+    Show {
+        /// Cant name or path to a manifest
+        cant: String,
+    },
+    /// List the cants that `cant run NAME` can find, and where each comes from
     List,
     /// Check whether this kernel can sandbox cants
     Check,
@@ -57,7 +65,8 @@ struct RunArgs {
     #[arg(long = "grant", value_name = "PATH[:ACCESS]")]
     grants: Vec<UserGrant>,
 
-    /// Cant name (looked up in ~/.config/cantainer/cants, then ./examples) or manifest path
+    /// Cant name (looked up in ~/.config/cantainer/cants, /etc/cantainer/cants, then the
+    /// built-in cants) or path to a manifest
     cant: String,
 
     /// Arguments for the program. Files named here are granted as the manifest declares.
@@ -108,6 +117,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Run(args) => run(args),
         Command::Inspect { cant } => inspect(&cant),
+        Command::Show { cant } => show(&cant),
         Command::List => list(),
         Command::Check => Ok(check()),
     };
@@ -136,42 +146,10 @@ fn context() -> Result<Context, Failure> {
     Ok(Context::new(home, cwd))
 }
 
-/// Directories searched for `NAME.toml`, in order.
-fn search_dirs() -> Result<Vec<PathBuf>, Failure> {
-    let config = match std::env::var_os("XDG_CONFIG_HOME") {
-        Some(c) if Path::new(&c).is_absolute() => PathBuf::from(c),
-        _ => home_dir()?.join(".config"),
-    };
-    Ok(vec![
-        config.join("cantainer").join("cants"),
-        PathBuf::from("examples"),
-    ])
-}
-
-fn locate(name: &str) -> Result<(PathBuf, Manifest), Failure> {
-    let path = if name.contains('/') || name.ends_with(".toml") {
-        PathBuf::from(name)
-    } else {
-        validate_name(name).map_err(Failure::new)?;
-        let dirs = search_dirs()?;
-        let found = dirs
-            .iter()
-            .map(|d| d.join(format!("{name}.toml")))
-            .find(|p| p.is_file());
-        match found {
-            Some(p) => p,
-            None => {
-                let looked: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
-                return Err(Failure::new(format!(
-                    "no cant named `{name}` (looked in {})",
-                    looked.join(" and ")
-                )));
-            }
-        }
-    };
-    let manifest =
-        Manifest::from_file(&path).map_err(|e| Failure::new(format!("{}: {e}", path.display())))?;
-    Ok((path, manifest))
+fn locate(name: &str) -> Result<Found, Failure> {
+    Catalog::standard(&home_dir()?)
+        .find(name)
+        .map_err(Failure::new)
 }
 
 fn parent_policy() -> Result<Option<Policy>, Failure> {
@@ -190,20 +168,20 @@ fn prepare(
     name: &str,
     args: &[OsString],
     grants: &[UserGrant],
-) -> Result<(PathBuf, Manifest, Context, Plan, Vec<cant_policy::Skipped>), Failure> {
-    let (path, manifest) = locate(name)?;
+) -> Result<(Found, Context, Plan, Vec<cant_policy::Skipped>), Failure> {
+    let found = locate(name)?;
     let ctx = context()?;
-    let built = cant_policy::build(&manifest, &ctx, args, grants)?;
+    let built = cant_policy::build(&found.manifest, &ctx, args, grants)?;
     let skipped = built.skipped.clone();
     let parent = parent_policy()?;
-    let plan = cant_launch::plan(&manifest, built, args, parent.as_ref(), &ctx.home)?;
-    Ok((path, manifest, ctx, plan, skipped))
+    let plan = cant_launch::plan(&found.manifest, built, args, parent.as_ref(), &ctx.home)?;
+    Ok((found, ctx, plan, skipped))
 }
 
 fn run(args: RunArgs) -> Result<ExitCode, Failure> {
-    let (path, _manifest, ctx, plan, skipped) = prepare(&args.cant, &args.args, &args.grants)?;
+    let (found, ctx, plan, skipped) = prepare(&args.cant, &args.args, &args.grants)?;
     if args.explain {
-        print_explain(&path, &ctx, &plan, &skipped);
+        print_explain(&found.source, &ctx, &plan, &skipped);
         return Ok(ExitCode::SUCCESS);
     }
     let mut warn = |msg: &str| eprintln!("cant: {msg}");
@@ -257,8 +235,8 @@ fn print_policy(ctx: &Context, policy: &Policy) {
     println!("  everything else: denied");
 }
 
-fn print_explain(path: &Path, ctx: &Context, plan: &Plan, skipped: &[cant_policy::Skipped]) {
-    println!("cant:         {} ({})", plan.cant, path.display());
+fn print_explain(source: &Source, ctx: &Context, plan: &Plan, skipped: &[cant_policy::Skipped]) {
+    println!("cant:         {} ({source})", plan.cant);
     println!("program:      {}", plan.program.display());
     let argv: Vec<String> = std::iter::once(&plan.argv0)
         .chain(plan.args.iter())
@@ -282,12 +260,11 @@ fn print_explain(path: &Path, ctx: &Context, plan: &Plan, skipped: &[cant_policy
 }
 
 fn inspect(name: &str) -> Result<ExitCode, Failure> {
-    let (path, _manifest, ctx, plan, skipped) = prepare(name, &[], &[])?;
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| Failure::new(format!("{}: {e}", path.display())))?;
+    let (found, ctx, plan, skipped) = prepare(name, &[], &[])?;
+    let text = found.text;
     let digest = cant_store::Digest::of_file(&plan.program)
         .map_err(|e| Failure::new(format!("{}: {e}", plan.program.display())))?;
-    println!("manifest: {}", path.display());
+    println!("manifest: {}", found.source);
     println!("---");
     print!("{text}");
     if !text.ends_with('\n') {
@@ -308,30 +285,21 @@ fn inspect(name: &str) -> Result<ExitCode, Failure> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn show(name: &str) -> Result<ExitCode, Failure> {
+    let found = locate(name)?;
+    print!("{}", found.text);
+    if !found.text.ends_with('\n') {
+        println!();
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn list() -> Result<ExitCode, Failure> {
-    let mut seen = std::collections::BTreeSet::new();
-    for dir in search_dirs()? {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut names: Vec<(String, PathBuf)> = entries
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e == "toml"))
-            .filter_map(|p| Some((p.file_stem()?.to_str()?.to_owned(), p)))
-            .collect();
-        names.sort();
-        for (name, path) in names {
-            if !seen.insert(name.clone()) {
-                continue; // shadowed by an earlier directory
-            }
-            let description = Manifest::from_file(&path)
-                .map(|m| m.description.unwrap_or_default())
-                .unwrap_or_else(|e| {
-                    format!("(invalid: {})", e.to_string().lines().next().unwrap_or(""))
-                });
-            println!("{name:<12} {description:<60} {}", path.display());
-        }
+    for entry in Catalog::standard(&home_dir()?).list() {
+        let description = entry
+            .description
+            .unwrap_or_else(|e| format!("(invalid: {e})"));
+        println!("{:<12} {description:<60} {}", entry.name, entry.source);
     }
     Ok(ExitCode::SUCCESS)
 }
