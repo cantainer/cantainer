@@ -8,7 +8,8 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
-## [0.0.2] - 2026-11-12
+0.0.2 was tagged but never published: its aarch64 release build failed. Its changes ship in
+0.0.3.
 
 ### Added
 - Release process: `dev/release.sh`, a tag-triggered release workflow with an approval gate,
@@ -48,6 +49,10 @@ Security-relevant changes are listed under **Security**.
   (`cant run ./examples/x.toml`) or put the manifest in `~/.config/cantainer/cants/`.
 
 ### Fixed
+- `cant-launch` builds for aarch64 with musl and for riscv64 (it used a syscall constant the
+  `libc` crate doesn't define there).
+- A static program in a cant (rustup on arm64) can start dynamically linked programs from an
+  `exec` directory: such cants now get execute access to the dynamic loaders.
 - `cant list | head` and similar no longer panic when the reader closes the pipe.
 - Landlock rule paths are opened with `O_PATH` through `rustix` instead of `landlock::PathFd`.
   On musl, Rust's std strips `O_PATH`. Every granted path was then really opened, so `cant`
@@ -81,6 +86,5 @@ First release.
   path-based metadata changes, `TIOCSTI`, x32 syscalls, and sockets the policy doesn't allow.
 - Refuses to run on kernels below Landlock ABI 3.
 
-[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.2...HEAD
-[0.0.2]: https://github.com/cantainer/cantainer/compare/v0.0.1...v0.0.2
+[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/cantainer/cantainer/releases/tag/v0.0.1
