@@ -809,17 +809,41 @@ fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
             .expect("explain");
         let scripts = Command::new("sh")
             .arg("-c")
-            .arg("find target -name 'build_script_build*' -type f -exec file {} + ; uname -m")
+            .arg(
+                "find target -name 'build_script_build*' -type f -exec file {} + ; uname -m; \
+                 grep -E ' /tmp | / ' /proc/self/mountinfo; \
+                 s=$(find target -name build_script_build -type f | head -n1); \
+                 echo \"outside a cant:\"; \"$s\" >/dev/null; echo \"exit $?\"",
+            )
             .current_dir(&f.work)
             .output()
             .expect("find");
+        let runner = f.manifest(
+            "runner",
+            "[entrypoint]\npath = \"sh\"\n[args.options]\n\"-c\" = \"value\"\n\
+             [capabilities]\nexec = [\"$CWD\"]\nfs.ro = [\"/usr/lib\"]\n",
+        );
+        let inside = f
+            .command(&[
+                "run",
+                runner.to_str().expect("utf8"),
+                "-c",
+                "s=$(find target -name build_script_build -type f | head -n1); \
+                 \"$s\" >/dev/null; echo \"inside a cant: exit $?\"; \
+                 cp \"$s\" ./copied 2>&1; ./copied >/dev/null; echo \"copied: exit $?\"",
+            ])
+            .output()
+            .expect("runner");
         panic!(
-            "cargo run failed:\n{}{}\n--- explain ---\n{}\n--- build scripts ---\n{}{}",
+            "cargo run failed:\n{}{}\n--- explain ---\n{}\n--- build scripts ---\n{}{}\n\
+             --- in a minimal cant ---\n{}{}",
             stdout(&o),
             stderr(&o),
             stdout(&explained),
             stdout(&scripts),
-            stderr(&scripts)
+            stderr(&scripts),
+            stdout(&inside),
+            stderr(&inside)
         );
     }
     assert_eq!(stdout(&o), "built\n");
