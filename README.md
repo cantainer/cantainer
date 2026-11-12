@@ -54,39 +54,75 @@ The long-term goal is a Linux system with no shared userland, where every comman
 
 ## Install
 
-Cantainer needs Linux ≥ 6.2 (≥ 6.7 for Landlock network rules). Every channel installs the same
-static `cant` binary for x86_64 or aarch64, built and signed by the
-[release workflow](docs/RELEASING.md). The packages, the APT/RPM repositories and the Homebrew
-tap start with 0.0.2.
+Cantainer runs on **Linux ≥ 6.2** (≥ 6.7 for Landlock network rules), x86_64 or aarch64. The
+package is called **`cantainer`**; the command it installs is **`cant`**. Packages, the APT/RPM
+repositories and the Homebrew tap start with version 0.0.2.
 
-**Debian, Ubuntu** (APT):
+| You use | Install with |
+|---|---|
+| Debian, Ubuntu (`apt-get` / `apt`) | [APT repository](#debian-and-ubuntu-apt) → `sudo apt-get install cantainer` |
+| Homebrew (on Linux or WSL) | `brew install cantainer/tap/cantainer` |
+| Fedora, RHEL, openSUSE | [RPM repository](#fedora-rhel-opensuse-rpm) → `sudo dnf install cantainer` |
+| Arch Linux | `cantainer-bin` on the AUR (coming soon) |
+| Rust's cargo | `cargo binstall cantainer` (prebuilt) or `cargo install cantainer` |
+| Anything else | [static binary](#static-binary) |
+
+Every channel installs the same static binary, built and signed by the
+[release workflow](docs/RELEASING.md), with shell completions and man pages (except cargo).
+
+### Debian and Ubuntu (APT)
+
+Debian 11+ and Ubuntu 20.04+. Add the repository and its signing key once:
 
 ```sh
+sudo install -d -m 0755 /etc/apt/keyrings
 sudo curl -fsSLo /etc/apt/keyrings/cantainer.asc https://cantainer.github.io/packages/signing-key.asc
 echo "deb [signed-by=/etc/apt/keyrings/cantainer.asc] https://cantainer.github.io/packages/apt stable main" \
   | sudo tee /etc/apt/sources.list.d/cantainer.list
-sudo apt update && sudo apt install cantainer
 ```
 
-**Fedora, RHEL, openSUSE** (RPM):
+Then install, and later update, like any other package:
+
+```sh
+sudo apt-get update && sudo apt-get install cantainer     # install
+sudo apt-get update && sudo apt-get install --only-upgrade cantainer   # update
+sudo apt-get remove cantainer                             # remove
+```
+
+The key's fingerprint is `93B1 11A2 5A48 73A3 2AFA  EF6D DEC0 3DB8 3F0D 540B`
+(`gpg --show-keys /etc/apt/keyrings/cantainer.asc`).
+
+### Homebrew
+
+On Linux (including WSL), with [Homebrew](https://brew.sh):
+
+```sh
+brew install cantainer/tap/cantainer    # install (adds the cantainer/tap tap)
+brew upgrade cantainer                  # update
+brew uninstall cantainer                # remove
+```
+
+**macOS:** cants need a Linux kernel, so the formula is Linux-only and `brew install` refuses on
+a Mac. Use Cantainer inside a Linux VM: see [macOS (via Lima)](#macos-via-lima).
+
+### Fedora, RHEL, openSUSE (RPM)
 
 ```sh
 sudo curl -fsSLo /etc/yum.repos.d/cantainer.repo https://cantainer.github.io/packages/rpm/cantainer.repo
-sudo dnf install cantainer          # zypper: add the same .repo file, then zypper install cantainer
+sudo dnf install cantainer          # update: sudo dnf upgrade cantainer
 ```
 
-**Homebrew on Linux:** `brew install cantainer/tap/cantainer`
+openSUSE: `sudo zypper addrepo https://cantainer.github.io/packages/rpm/cantainer.repo`, then
+`sudo zypper install cantainer`. Packages and repository metadata are signed with the same key.
 
-**Arch Linux:** `cantainer-bin` on the AUR (coming soon).
+### Static binary
 
-**Cargo:** `cargo binstall cantainer` (prebuilt) or `cargo install cantainer` (from source).
+Download `cant-vX.Y.Z-<arch>-unknown-linux-musl.tar.gz` from the
+[releases](https://github.com/cantainer/cantainer/releases), check it against `SHA256SUMS`
+(signed as `SHA256SUMS.asc` with the [package key](packaging/signing-key.asc)), and put `cant`
+on your `PATH`. It has no dependencies.
 
-**Anything else:** download `cant-vX-<arch>-unknown-linux-musl.tar.gz` from the
-[releases](https://github.com/cantainer/cantainer/releases) and check it against `SHA256SUMS`,
-which is signed with the [package key](packaging/signing-key.asc)
-(`93B1 11A2 5A48 73A3 2AFA  EF6D DEC0 3DB8 3F0D 540B`).
-
-Then:
+### Check it works
 
 ```sh
 cant check                          # can this kernel sandbox cants?
