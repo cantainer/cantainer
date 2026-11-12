@@ -20,5 +20,11 @@ name = "cant"
 path = "src/main.rs"
 
 [dependencies]
-anyhow.workspace = true
+cant-launch.workspace = true
+cant-manifest.workspace = true
+cant-policy.workspace = true
+cant-store.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
