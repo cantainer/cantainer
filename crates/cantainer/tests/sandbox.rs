@@ -257,6 +257,30 @@ fn new_writes_a_deny_all_manifest_that_runs() {
     assert!(stderr(&o).contains("cant show cat"), "{}", stderr(&o));
 }
 
+#[test]
+fn exec_directories_get_the_dynamic_loader() {
+    // A static launcher (rustup on arm64) starting a dynamic build script from $CWD needs
+    // execute access to the loader; cant can't resolve libraries for files that don't exist yet.
+    let f = Fixture::new();
+    let m = f.manifest(
+        "runner",
+        "[entrypoint]\npath = \"sh\"\n[capabilities]\nexec = [\"$CWD\"]\n",
+    );
+    let o = f.cant(&["run", "--explain", m.to_str().expect("utf8")]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let loader = stdout(&o)
+        .lines()
+        .find(|l| l.contains("/ld-") && l.ends_with("runtime"))
+        .map(str::to_owned);
+    assert!(
+        loader
+            .as_deref()
+            .is_some_and(|l| l.trim_start().starts_with("rx")),
+        "{}",
+        stdout(&o)
+    );
+}
+
 // ---- Process behaviour -----------------------------------------------------------------------
 
 fn sh_manifest(f: &Fixture, extra: &str) -> PathBuf {

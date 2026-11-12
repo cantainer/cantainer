@@ -58,6 +58,19 @@ pub const RUNTIME_READ: &[&str] = &[
 /// Devices every program may read and write.
 pub const RUNTIME_READ_WRITE: &[&str] = &["/dev/null", "/dev/full", "/dev/tty"];
 
+/// The system's dynamic loaders. A cant that may execute files in a directory (cargo's build
+/// scripts in `$CWD`) gets these, because the kernel needs execute access to a program's
+/// loader to start it, and `cant` can't know in advance which files will run. Programs whose
+/// libraries `cant` resolves get their own loader anyway.
+pub const DYNAMIC_LOADERS: &[&str] = &[
+    "/lib64/ld-linux-x86-64.so.2",
+    "/lib/ld-linux-aarch64.so.1",
+    "/lib/ld-linux-riscv64-lp64d.so.1",
+    "/lib/ld-musl-x86_64.so.1",
+    "/lib/ld-musl-aarch64.so.1",
+    "/lib/ld-musl-riscv64.so.1",
+];
+
 /// Everything needed to start a cant.
 #[derive(Debug, Clone)]
 pub struct Plan {

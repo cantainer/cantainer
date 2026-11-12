@@ -145,7 +145,9 @@ exist are skipped; `--explain` lists them.
 The program's own executable, its ELF interpreter and its shared libraries are granted
 automatically. So is a small runtime base: the loader cache, locale, time zone and terminfo
 data, plus `/dev/null`, `/dev/tty`, `/dev/zero`, `/dev/full`, `/dev/random` and `/dev/urandom`.
-Libraries of `exec` targets are resolved for files, but not for directories.
+Libraries of `exec` targets are resolved for files, but not for directories: a cant that runs
+programs from a directory must grant their libraries (the `cargo` manifest grants `/usr/lib`).
+It does get execute access to the system's dynamic loaders.
 
 ### `cants`: running other cants
 

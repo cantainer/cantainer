@@ -15,7 +15,7 @@ use cant_policy::{
     Access, Built, Grant, Origin, Policy, display_path, intersect, not_permitted_by,
 };
 
-use crate::{LaunchError, POLICY_ENV, Plan, RUNTIME_READ, RUNTIME_READ_WRITE};
+use crate::{DYNAMIC_LOADERS, LaunchError, POLICY_ENV, Plan, RUNTIME_READ, RUNTIME_READ_WRITE};
 
 fn add_existing(policy: &mut Policy, path: &Path, access: Access, origin: Origin) {
     if let Ok(canonical) = std::fs::canonicalize(path) {
@@ -43,6 +43,15 @@ pub fn plan(
     }
     for path in RUNTIME_READ_WRITE {
         add_existing(&mut policy, Path::new(path), Access::RW, Origin::Runtime);
+    }
+    let executes_a_directory = policy
+        .grants
+        .iter()
+        .any(|g| g.access.contains(Access::RX) && g.path.is_dir());
+    if executes_a_directory {
+        for path in DYNAMIC_LOADERS {
+            add_existing(&mut policy, Path::new(path), Access::RX, Origin::Runtime);
+        }
     }
 
     // Inside another cant, its rights bound ours: say so plainly if it can't run the program.

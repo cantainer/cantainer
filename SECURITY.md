@@ -62,6 +62,11 @@ These are current gaps. Most are kernel limits, and some are planned work.
 - **Manifests you install are trusted.** `cant run NAME` uses `~/.config/cantainer/cants`, then
   `/etc/cantainer/cants`, then the built-in manifests. Anything that can write those directories
   outside a cant (you, root) decides what a name may do. Cants themselves can't write them.
+- **The dynamic loader runs any readable ELF file.** A cant running a dynamically linked
+  program (or allowed to execute a directory) may execute the system's dynamic loader, and
+  `ld.so ./file` runs any ELF file the cant can read, even one it has no execute grant for.
+  Landlock checks execute rights when a file is executed, not when it is mapped. The program
+  still has only the cant's rights.
 - **`dlopen`ed libraries** aren't discovered automatically. Plugins fail to load unless the
   manifest grants them; this fails closed.
 - **seccomp is a deny list.** System calls not listed are allowed, and Landlock is the primary
