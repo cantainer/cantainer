@@ -38,16 +38,7 @@ class Cantainer < Formula
 
   def install
     bin.install "cant"
-    pkgshare.install "examples"
     doc.install "README.md", "CHANGELOG.md"
-  end
-
-  def caveats
-    <<~EOS
-      Example manifests are in #{opt_pkgshare}/examples. To install them:
-        mkdir -p ~/.config/cantainer/cants
-        cp #{opt_pkgshare}/examples/*.toml ~/.config/cantainer/cants/
-    EOS
   end
 
   test do

@@ -27,12 +27,12 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$root" log -1 --format=
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# Stage the file tree a package installs: binary, docs, licenses, example manifests.
+# Stage the file tree a package installs: binary, docs, licenses.
 stage() { # stage SRC DEST
   local src="$1" dest="$2"
   install -Dm755 "$src/cant" "$dest/usr/bin/cant"
+  install -dm755 "$dest/etc/cantainer/cants"
   install -Dm644 -t "$dest/usr/share/doc/cantainer" "$src/README.md" "$src/CHANGELOG.md"
-  install -Dm644 -t "$dest/usr/share/doc/cantainer/examples" "$src"/examples/*.toml
   install -Dm644 -t "$dest/usr/share/licenses/cantainer" "$src/LICENSE-MIT" "$src/LICENSE-APACHE"
 }
 
@@ -105,6 +105,8 @@ cp -a $top/stage/. %{buildroot}/
 
 %files
 /usr/bin/cant
+%dir /etc/cantainer
+%dir /etc/cantainer/cants
 %doc /usr/share/doc/cantainer
 %license /usr/share/licenses/cantainer
 EOF

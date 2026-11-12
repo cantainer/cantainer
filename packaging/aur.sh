@@ -45,8 +45,8 @@ sha256sums_aarch64=('$sha_aarch64')
 package() {
   cd "cant-v$version-\$CARCH-unknown-linux-musl"
   install -Dm755 cant "\$pkgdir/usr/bin/cant"
+  install -dm755 "\$pkgdir/etc/cantainer/cants"
   install -Dm644 -t "\$pkgdir/usr/share/doc/cantainer" README.md CHANGELOG.md
-  install -Dm644 -t "\$pkgdir/usr/share/doc/cantainer/examples" examples/*.toml
   install -Dm644 -t "\$pkgdir/usr/share/licenses/\$pkgname" LICENSE-MIT LICENSE-APACHE
 }
 EOF

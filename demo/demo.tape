@@ -15,7 +15,7 @@ Set TypingSpeed 35ms
 Set Theme "Builtin Dark"
 
 Hide
-Type `export REPO="$PWD" XDG_CONFIG_HOME="$(mktemp -d)" && mkdir -p "$XDG_CONFIG_HOME/cantainer/cants" && cp examples/*.toml "$XDG_CONFIG_HOME/cantainer/cants/" && cd "$(mktemp -d)" && printf 'meeting notes\n' > notes.txt && PS1='$ ' && clear`
+Type `export REPO="$PWD" XDG_CONFIG_HOME="$(mktemp -d)" && cd "$(mktemp -d)" && printf 'meeting notes\n' > notes.txt && PS1='$ ' && clear`
 Enter
 Show
 

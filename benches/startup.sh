@@ -26,5 +26,5 @@ cd "$WORK"
 echo "kernel: $(uname -r)  cpu: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
 hyperfine --shell=none --warmup 50 --runs "$RUNS" --export-markdown "$WORK/result.md" \
   -n "cat" "cat notes.txt" \
-  -n "cant run cat" "$CANT run $ROOT/examples/cat.toml notes.txt"
+  -n "cant run cat" "$CANT run cat notes.txt"
 cat "$WORK/result.md"

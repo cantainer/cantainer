@@ -4,7 +4,8 @@
 #   packaging/tarball.sh VERSION TARGET BINARY OUTDIR
 #
 # Writes OUTDIR/cant-vVERSION-TARGET.tar.gz with one top-level directory of the same name,
-# containing the binary, the README, the changelog, both licenses and the example manifests.
+# containing the binary, the README, the changelog and both licenses. (The manifest library
+# is built into the binary.)
 # cargo-binstall, the Homebrew formula, the AUR package and packaging/packages.sh all rely on
 # this layout.
 set -euo pipefail
@@ -20,11 +21,10 @@ name="cant-v$version-$target"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-mkdir -p "$work/$name/examples" "$outdir"
+mkdir -p "$work/$name" "$outdir"
 install -m 755 "$binary" "$work/$name/cant"
 install -m 644 "$root/README.md" "$root/CHANGELOG.md" "$root/LICENSE-MIT" "$root/LICENSE-APACHE" \
   "$work/$name/"
-install -m 644 "$root"/examples/*.toml "$work/$name/examples/"
 
 find "$work/$name" -type d -exec chmod 0755 {} +
 
