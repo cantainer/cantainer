@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup show
       - name: Install programs used by the demo tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
       - run: cargo test --workspace --lib --bins
       - name: Doc tests and manifest validation
         run: cargo test --workspace --doc
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup show
       - name: Install programs used by the demo tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
       - name: Kernel support
         run: |
           uname -r

@@ -7,7 +7,7 @@
 #![cfg(target_os = "linux")]
 
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const CANT: &str = env!("CARGO_BIN_EXE_cant");
@@ -390,4 +390,226 @@ fn nested_cant_cannot_widen_rights() {
     ]);
     assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
     assert_eq!(stdout(&o), "hello\n");
+}
+
+// ---- Built-in manifest library ---------------------------------------------------------------
+//
+// Each built-in cant does its job in a project directory, and can't reach what it wasn't given.
+
+impl Fixture {
+    /// Adds a few files to the project directory for the library tests.
+    fn with_project(self) -> Self {
+        std::fs::write(self.work.join("notes2.txt"), "hello\nworld\n").expect("write");
+        std::fs::write(self.work.join("data.json"), "{\"a\": 1}\n").expect("write");
+        std::fs::create_dir_all(self.work.join("src")).expect("mkdir");
+        std::fs::write(self.work.join("src/main.rs"), "fn main() {}\n").expect("write");
+        self
+    }
+
+    /// Runs `cant run ARGS` and requires success with `expected` in stdout.
+    fn works(&self, args: &[&str], expected: &str) {
+        let mut full = vec!["run"];
+        full.extend_from_slice(args);
+        let o = self.cant(&full);
+        assert!(
+            o.status.success(),
+            "cant run {args:?} failed: {}{}",
+            stdout(&o),
+            stderr(&o)
+        );
+        assert!(
+            stdout(&o).contains(expected),
+            "cant run {args:?}: expected {expected:?} in {}",
+            stdout(&o)
+        );
+    }
+
+    /// Runs `cant run ARGS` from `dir` and requires `cant` itself to refuse (exit 125).
+    fn refused_in(&self, dir: &Path, args: &[&str]) {
+        let mut full = vec!["run"];
+        full.extend_from_slice(args);
+        let o = self
+            .command(&full)
+            .current_dir(dir)
+            .output()
+            .expect("run cant");
+        assert_eq!(
+            o.status.code(),
+            Some(125),
+            "cant run {args:?} in {}: {}{}",
+            dir.display(),
+            stdout(&o),
+            stderr(&o)
+        );
+        assert!(!stdout(&o).contains("PRIVATE KEY"));
+    }
+
+    fn refused(&self, args: &[&str]) {
+        self.refused_in(&self.work, args);
+    }
+}
+
+fn library_ready(programs: &[&str]) -> bool {
+    supported() && programs.iter().all(|p| have(p))
+}
+
+#[test]
+fn library_text_tools() {
+    if !library_ready(&["head", "tail", "wc", "diff", "sed"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    let key = f.home.join(".ssh/id_rsa");
+    let key = key.to_str().expect("utf8");
+
+    f.works(&["head", "-n", "1", "notes2.txt"], "hello\n");
+    f.works(&["tail", "-n", "1", "notes2.txt"], "world\n");
+    f.works(&["wc", "-l", "notes2.txt"], "2 notes2.txt");
+    f.works(&["sed", "s/hello/bye/", "notes.txt"], "bye\n");
+    f.works(&["sed", "-e", "s/world/earth/", "notes2.txt"], "earth\n");
+    for tool in ["head", "tail", "wc", "sed"] {
+        let args: Vec<&str> = if tool == "sed" {
+            vec![tool, "p", key]
+        } else {
+            vec![tool, key]
+        };
+        f.refused(&args);
+    }
+
+    // diff exits 1 when the files differ.
+    let o = f.cant(&["run", "diff", "notes.txt", "notes2.txt"]);
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    assert!(stdout(&o).contains("> world"), "{}", stdout(&o));
+    f.refused(&["diff", "notes.txt", key]);
+
+    // sed -i can't write: it needs to create a file next to the original.
+    let o = f.cant(&["run", "sed", "-i", "s/hello/bye/", "notes.txt"]);
+    assert!(!o.status.success());
+    assert_eq!(
+        std::fs::read_to_string(f.work.join("notes.txt")).expect("read"),
+        "hello\n"
+    );
+}
+
+#[test]
+fn library_jq_filter_is_not_a_file() {
+    if !library_ready(&["jq"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    f.works(&["jq", ".a", "data.json"], "1");
+    f.works(&["jq", "-c", ".", "data.json"], "{\"a\":1}");
+    // `.` is the filter, not the current directory: only data.json is granted.
+    let o = f.cant(&["run", "--explain", "jq", ".", "data.json"]);
+    let out = stdout(&o);
+    assert!(out.contains("~/proj/data.json"), "{out}");
+    assert!(
+        !out.lines()
+            .any(|l| l.split_whitespace().nth(1) == Some("~/proj")),
+        "{out}"
+    );
+    // That also means jq works from the home directory, on a file it's given.
+    let o = f
+        .command(&["run", "jq", ".a", "proj/data.json"])
+        .current_dir(&f.home)
+        .output()
+        .expect("run");
+    assert!(o.status.success(), "{}", stderr(&o));
+    f.refused(&[
+        "jq",
+        ".",
+        f.home.join(".ssh/id_rsa").to_str().expect("utf8"),
+    ]);
+}
+
+#[test]
+fn library_search_tools() {
+    if !library_ready(&["grep", "rg", "find"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    f.works(&["grep", "-rn", "world"], "notes2.txt:2:world");
+    f.works(&["grep", "-e", "hello", "notes.txt"], "hello");
+    f.works(&["rg", "-n", "fn main"], "src/main.rs:1:fn main() {}");
+    f.works(&["rg", "world", "notes2.txt"], "world");
+    f.works(&["find", ".", "-name", "*.rs"], "./src/main.rs");
+
+    // Secrets stay out of reach, by name or through `..`.
+    f.refused(&["grep", "-r", "PRIVATE", "../.ssh"]);
+    f.refused(&["rg", "PRIVATE", "../.ssh"]);
+    f.refused(&["find", "../.ssh"]);
+    // From the home directory, the current-directory grant would contain ~/.ssh.
+    f.refused_in(&f.home, &["grep", "-r", "PRIVATE"]);
+    f.refused_in(&f.home, &["rg", "PRIVATE"]);
+
+    // find can't delete or run anything.
+    let o = f.cant(&["run", "find", ".", "-name", "notes.txt", "-delete"]);
+    assert!(!o.status.success());
+    assert!(
+        f.work.join("notes.txt").exists(),
+        "find -delete deleted a file"
+    );
+    let o = f.cant(&[
+        "run",
+        "find",
+        ".",
+        "-name",
+        "notes.txt",
+        "-exec",
+        "rm",
+        "{}",
+        ";",
+    ]);
+    // The kernel refuses to run rm; GNU find treats that as a false test, not an error.
+    assert!(stderr(&o).contains("Permission denied"), "{}", stderr(&o));
+    assert!(f.work.join("notes.txt").exists(), "find -exec ran rm");
+}
+
+#[test]
+fn library_listing_tools() {
+    if !library_ready(&["ls", "tree"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    f.works(&["ls"], "notes.txt");
+    f.works(&["ls", "-l", "src"], "main.rs");
+    f.works(&["tree"], "main.rs");
+    f.refused(&["ls", "../.ssh"]);
+    f.refused_in(&f.home, &["ls"]);
+    f.refused_in(&f.home, &["tree"]);
+}
+
+#[test]
+fn library_curl_net_reaches_the_network_but_not_secrets() {
+    if !library_ready(&["curl"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let url = format!("http://{}/", listener.local_addr().expect("addr"));
+    let server = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut conn, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 1024];
+        let _ = conn.read(&mut buf);
+        let _ = conn.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 3\r\n\r\nok\n");
+    });
+    f.works(&["curl-net", "-sS", "--max-time", "5", &url], "ok");
+    server.join().expect("server");
+
+    let ssh = f.home.join(".ssh/stolen");
+    f.refused(&["curl-net", "-o", ssh.to_str().expect("utf8"), &url]);
+    let key = format!("@{}", f.home.join(".ssh/id_rsa").display());
+    // `-d @file` isn't a grant, so curl can't read the key to upload it.
+    let o = f.cant(&[
+        "run",
+        "curl-net",
+        "-sS",
+        "--max-time",
+        "2",
+        "-d",
+        &key,
+        &url,
+    ]);
+    assert!(!o.status.success(), "{}", stdout(&o));
 }

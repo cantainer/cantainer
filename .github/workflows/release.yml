@@ -56,7 +56,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Install programs used by the demo tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
       - run: cargo test --workspace --locked
       - run: cargo publish --dry-run --workspace --locked
 
@@ -87,7 +87,7 @@ jobs:
           "$bin" --version | grep -qx "cant $VERSION"
           "$bin" check || echo "::warning::this runner's kernel cannot sandbox cants"
       - name: Install programs used by the demo tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
       - name: Sandbox tests against the static build
         run: cargo test --locked -p cantainer --target "$TARGET" --test sandbox
       - run: packaging/tarball.sh "$VERSION" "$TARGET" "target/$TARGET/release/cant" dist
