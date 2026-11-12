@@ -144,9 +144,17 @@ SHA256SUMS), signed APT/RPM repos in `cantainer/packages` on Pages, Homebrew tap
 fix. Claude Code's Bash allow rules are not a security boundary (read-only commands always
 run); AGENTS.md says so. Running a whole agent inside a cant is untested.
 
+Released 2026-11-12: **0.0.3** (0.0.2 was tagged but never published: its aarch64 build
+failed). crates.io via Trusted Publishing, GitHub release, signed APT/RPM repos on Pages, Homebrew
+tap. Verified: `apt-get install cantainer` from the repo on Ubuntu 24.04, formula sha256 = signed
+SHA256SUMS. Lessons now enforced: CI `cross` + native `arm64` jobs, `dev/check.sh`, release.sh
+requires green CI, `channels.yml` re-publishes the channels of an existing release.
+
 Open items:
-- Cut 0.0.2 through the release workflow (first real run; ask before pushing the tag). After it
-  succeeds, the maintainer revokes the `CRATES_TOKEN` crates.io token and deletes the secrets.
+- The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
+  secrets (Trusted Publishing worked for 0.0.3).
+- Not yet verified by hand: `dnf install cantainer` from the RPM repo, `brew install
+  cantainer/tap/cantainer` on Linux.
 - AUR: registration was closed on 2026-11-12. When it reopens: account, SSH key, secret
   `AUR_SSH_KEY` (steps in `docs/RELEASING.md`).
 - Distro submissions (each needs the maintainer's OK before any external PR or issue):
