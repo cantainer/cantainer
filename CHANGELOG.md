@@ -30,6 +30,9 @@ Security-relevant changes are listed under **Security**.
   `[env] set` sets variables to fixed values (`$CWD` and `~` expand).
 - `capabilities.cants = [...]`: a cant may run these cants, and its rights include theirs, so
   nested `cant run` works. Running an unlisted cant inside another fails with a clear message.
+- Built-in `cargo` (offline) and `cargo-net` (for `cargo fetch`): build scripts, proc macros
+  and tests run sandboxed, so a malicious dependency can't read `~/.ssh` or, offline, reach the
+  network. Tested with a build script that tries to read a key.
 - Built-in `agent-sh`: a shell for AI agents that works in the current directory, has no
   network, and runs tools as cants.
 - `cant completions bash|zsh|fish|elvish|powershell`, and man pages. Packages and the Homebrew

@@ -706,3 +706,91 @@ fn agent_sh_runs_tools_only_as_cants() {
     let o = agent(&f, &f.home, "true");
     assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
 }
+
+// ---- cargo -----------------------------------------------------------------------------------
+
+/// The built-in cargo manifest, with `~/.cargo` and `~/.rustup` pointing at this machine's
+/// real toolchain (the fixture's HOME is fake). None if there's no rustup-managed cargo.
+/// Returns (manifest, toolchain bin directory, rustup home).
+fn cargo_manifest(f: &Fixture) -> Option<(PathBuf, PathBuf, PathBuf)> {
+    let path = std::env::var_os("PATH")?;
+    let proxy = std::env::split_paths(&path)
+        .map(|d| d.join("cargo"))
+        .find(|p| p.is_file())?;
+    let cargo_home = proxy.parent()?.parent()?.to_path_buf();
+    let rustup_home = std::env::var_os("RUSTUP_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".rustup")))?;
+    if !rustup_home.join("toolchains").is_dir() {
+        eprintln!("SKIP: no rustup toolchains at {}", rustup_home.display());
+        return None;
+    }
+    let shown = Command::new(CANT)
+        .args(["show", "cargo"])
+        .output()
+        .expect("cant show cargo");
+    let text = String::from_utf8(shown.stdout)
+        .expect("utf8")
+        .replace("~/.cargo", &cargo_home.display().to_string())
+        .replace("~/.rustup", &rustup_home.display().to_string());
+    let m = f.home.join("cargo.toml");
+    std::fs::write(&m, text).expect("write");
+    Some((m, cargo_home.join("bin"), rustup_home))
+}
+
+#[test]
+fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
+    if !library_ready(&["cc"]) {
+        return;
+    }
+    let f = Fixture::new();
+    let Some((m, cargo_bin, rustup_home)) = cargo_manifest(&f) else {
+        eprintln!("SKIP: no rustup-managed cargo on PATH");
+        return;
+    };
+    let m = m.to_str().expect("utf8");
+    std::fs::create_dir_all(f.work.join("src")).expect("mkdir");
+    std::fs::write(
+        f.work.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write");
+    std::fs::write(
+        f.work.join("build.rs"),
+        "fn main() { println!(\"cargo:rustc-env=GREETING=built\"); }\n",
+    )
+    .expect("write");
+    std::fs::write(
+        f.work.join("src/main.rs"),
+        "fn main() { println!(\"{}\", env!(\"GREETING\")); }\n",
+    )
+    .expect("write");
+    let run = |args: &[&str]| {
+        let mut full = vec!["run", m];
+        full.extend_from_slice(args);
+        f.command(&full)
+            .env("RUSTUP_HOME", &rustup_home)
+            .env("PATH", format!("{}:/usr/bin:/bin", cargo_bin.display()))
+            .stdin(Stdio::null())
+            .output()
+            .expect("run cargo")
+    };
+
+    let o = run(&["run", "-q"]);
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert_eq!(stdout(&o), "built\n");
+
+    // A build script that tries to steal a key.
+    let key = f.home.join(".ssh/id_rsa");
+    std::fs::write(
+        f.work.join("build.rs"),
+        format!(
+            "fn main() {{ let k = std::fs::read({:?}); assert!(k.is_ok(), \"{{k:?}}\"); }}\n",
+            key
+        ),
+    )
+    .expect("write");
+    let o = run(&["build", "-q"]);
+    assert!(!o.status.success(), "the build script read the key");
+    assert!(stderr(&o).contains("PermissionDenied"), "{}", stderr(&o));
+}

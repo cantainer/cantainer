@@ -1,0 +1,46 @@
+# cargo, offline: builds, tests and runs the project in the current directory. Build scripts,
+# proc macros and tests run inside the same sandbox, so a malicious dependency can't read
+# ~/.ssh or reach the network. Dependencies must already be downloaded: fetch them with
+#   cant run cargo-net fetch
+# Assumes rustup's standard layout (~/.cargo, ~/.rustup); for another layout, copy and edit:
+#   cant show cargo > ~/.config/cantainer/cants/cargo.toml
+# Run it from the workspace root: temporary files go to $CWD/target.
+manifest_version = 1
+name = "cargo"
+version = "0.1.0"
+description = "Rust's build tool, offline, confined to the current directory"
+
+[entrypoint]
+path = "~/.cargo/bin/cargo"
+
+[args]
+operands = "none"
+
+[capabilities]
+network = false
+fs.rw = ["$CWD", "~/.cargo/registry", "~/.cargo/git"]
+fs.ro = [
+  "~/.rustup",
+  "~/.cargo/bin",
+  "~/.cargo/config.toml",
+  "~/.cargo/config",
+  # The C toolchain and system libraries, for linking and for build scripts that compile C.
+  "/usr/lib", "/usr/lib64", "/usr/include", "/usr/local/lib", "/usr/local/include",
+  "/etc/passwd", "/etc/group", "/etc/nsswitch.conf",
+]
+# The project's own binaries (build scripts, tests), the toolchain, and the C toolchain.
+exec = [
+  "$CWD",
+  "~/.cargo/bin",
+  "~/.rustup/toolchains",
+  "cc", "c++", "gcc", "g++", "ld", "as", "ar", "pkg-config",
+  "/usr/libexec/gcc", "/usr/lib/gcc",
+]
+
+[env]
+pass = [
+  "HOME", "PATH", "LANG", "LC_*", "TERM", "COLUMNS",
+  "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "RUSTFLAGS", "RUSTDOCFLAGS", "RUST_BACKTRACE", "RUST_LOG",
+  "CARGO_TERM_*", "CARGO_INCREMENTAL", "CARGO_PROFILE_*", "CARGO_BUILD_JOBS",
+]
+set = { CARGO_NET_OFFLINE = "true", TMPDIR = "$CWD/target" }

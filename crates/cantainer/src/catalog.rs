@@ -14,6 +14,8 @@ use cant_manifest::{Manifest, validate_name};
 /// Manifests compiled into `cant`, as (name, TOML text). Sorted by name.
 pub const BUILTIN: &[(&str, &str)] = &[
     ("agent-sh", include_str!("../cants/agent-sh.toml")),
+    ("cargo", include_str!("../cants/cargo.toml")),
+    ("cargo-net", include_str!("../cants/cargo-net.toml")),
     ("cat", include_str!("../cants/cat.toml")),
     ("curl", include_str!("../cants/curl.toml")),
     ("curl-net", include_str!("../cants/curl-net.toml")),

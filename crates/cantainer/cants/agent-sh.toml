@@ -26,7 +26,10 @@ operands = "r"        # a script to run
 [capabilities]
 network = false
 fs.rw = ["$CWD"]
-cants = ["cat", "head", "tail", "wc", "diff", "sed", "jq", "grep", "rg", "find", "ls", "tree", "git"]
+cants = [
+  "cat", "head", "tail", "wc", "diff", "sed", "jq", "grep", "rg", "find", "ls", "tree",
+  "git", "cargo",
+]
 
 [env]
 pass = ["HOME", "PATH", "LANG", "LC_*", "TERM", "COLUMNS"]

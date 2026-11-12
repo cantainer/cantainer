@@ -1,0 +1,50 @@
+# cargo with network access, for downloading dependencies: `cant run cargo-net fetch`, then
+# build offline with `cant run cargo build`. It can do everything the offline cargo can, plus
+# reach the network, so build scripts run by cargo-net could send your project somewhere.
+# Prefer `fetch` (which runs no build scripts) and build with the offline cargo.
+# Assumes rustup's standard layout (~/.cargo, ~/.rustup); for another layout, copy and edit:
+#   cant show cargo > ~/.config/cantainer/cants/cargo.toml
+# Run it from the workspace root: temporary files go to $CWD/target.
+manifest_version = 1
+name = "cargo-net"
+version = "0.1.0"
+description = "Rust's build tool, with network access (for fetching dependencies)"
+
+[entrypoint]
+path = "~/.cargo/bin/cargo"
+
+[args]
+operands = "none"
+
+[capabilities]
+network = true
+fs.rw = ["$CWD", "~/.cargo/registry", "~/.cargo/git"]
+fs.ro = [
+  "~/.rustup",
+  "~/.cargo/bin",
+  "~/.cargo/config.toml",
+  "~/.cargo/config",
+  # The C toolchain and system libraries, for linking and for build scripts that compile C.
+  "/usr/lib", "/usr/lib64", "/usr/include", "/usr/local/lib", "/usr/local/include",
+  "/etc/passwd", "/etc/group", "/etc/nsswitch.conf",
+  # Name resolution and TLS.
+  "/etc/hosts", "/etc/resolv.conf", "/etc/host.conf", "/etc/gai.conf",
+  "/etc/ssl", "/etc/ca-certificates", "/usr/share/ca-certificates", "/etc/pki",
+]
+# The project's own binaries (build scripts, tests), the toolchain, and the C toolchain.
+exec = [
+  "$CWD",
+  "~/.cargo/bin",
+  "~/.rustup/toolchains",
+  "cc", "c++", "gcc", "g++", "ld", "as", "ar", "pkg-config",
+  "/usr/libexec/gcc", "/usr/lib/gcc",
+]
+
+[env]
+pass = [
+  "HOME", "PATH", "LANG", "LC_*", "TERM", "COLUMNS",
+  "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "RUSTFLAGS", "RUSTDOCFLAGS", "RUST_BACKTRACE", "RUST_LOG",
+  "CARGO_TERM_*", "CARGO_INCREMENTAL", "CARGO_PROFILE_*", "CARGO_BUILD_JOBS",
+  "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy",
+]
+set = { TMPDIR = "$CWD/target" }
