@@ -15,6 +15,18 @@ use cant_policy::{Context, Origin, Policy, PolicyError, UserGrant, display_path}
 use catalog::{Catalog, Found, Source};
 use clap::{Parser, Subcommand};
 
+/// Appends a line to a command's output. Commands write into a buffer that `main` prints, so a
+/// closed pipe (`cant list | head`) ends `cant` quietly instead of panicking in `println`.
+macro_rules! outln {
+    ($out:expr) => {
+        $out.push('\n')
+    };
+    ($out:expr, $($arg:tt)*) => {{
+        use std::fmt::Write as _;
+        let _ = writeln!($out, $($arg)*); // writing to a String can't fail
+    }};
+}
+
 /// Exit status for refusals and errors of `cant` itself (as `env`, `nohup` and container
 /// runtimes do), so they are distinguishable from the program's own exit status.
 const EXIT_CANT: u8 = 125;
@@ -114,13 +126,20 @@ impl From<LaunchError> for Failure {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let mut out = String::new();
     let result = match cli.command {
-        Command::Run(args) => run(args),
-        Command::Inspect { cant } => inspect(&cant),
-        Command::Show { cant } => show(&cant),
-        Command::List => list(),
-        Command::Check => Ok(check()),
+        Command::Run(args) => run(args, &mut out),
+        Command::Inspect { cant } => inspect(&cant, &mut out),
+        Command::Show { cant } => show(&cant, &mut out),
+        Command::List => list(&mut out),
+        Command::Check => Ok(check(&mut out)),
     };
+    if let Err(e) = write_stdout(&out) {
+        if e.kind() != std::io::ErrorKind::BrokenPipe {
+            eprintln!("cant: cannot write to standard output: {e}");
+        }
+        return ExitCode::from(EXIT_CANT);
+    }
     match result {
         Ok(code) => code,
         Err(f) => {
@@ -128,6 +147,13 @@ fn main() -> ExitCode {
             ExitCode::from(f.code)
         }
     }
+}
+
+fn write_stdout(out: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(out.as_bytes())?;
+    stdout.flush()
 }
 
 fn home_dir() -> Result<PathBuf, Failure> {
@@ -178,10 +204,10 @@ fn prepare(
     Ok((found, ctx, plan, skipped))
 }
 
-fn run(args: RunArgs) -> Result<ExitCode, Failure> {
+fn run(args: RunArgs, out: &mut String) -> Result<ExitCode, Failure> {
     let (found, ctx, plan, skipped) = prepare(&args.cant, &args.args, &args.grants)?;
     if args.explain {
-        print_explain(&found.source, &ctx, &plan, &skipped);
+        print_explain(out, &found.source, &ctx, &plan, &skipped);
         return Ok(ExitCode::SUCCESS);
     }
     let mut warn = |msg: &str| eprintln!("cant: {msg}");
@@ -204,11 +230,12 @@ fn yes_no(allowed: bool) -> &'static str {
     if allowed { "allowed" } else { "denied" }
 }
 
-fn print_policy(ctx: &Context, policy: &Policy) {
-    println!("network:      {}", yes_no(policy.network));
-    println!("unix sockets: {}", yes_no(policy.unix_sockets));
+fn print_policy(out: &mut String, ctx: &Context, policy: &Policy) {
+    outln!(out, "network:      {}", yes_no(policy.network));
+    outln!(out, "unix sockets: {}", yes_no(policy.unix_sockets));
     let env: Vec<String> = policy.env.iter().map(ToString::to_string).collect();
-    println!(
+    outln!(
+        out,
         "env:          {}",
         if env.is_empty() {
             "(none)".to_string()
@@ -216,7 +243,7 @@ fn print_policy(ctx: &Context, policy: &Policy) {
             env.join(", ")
         }
     );
-    println!("files:");
+    outln!(out, "files:");
     let mut grants: Vec<_> = policy.grants.iter().collect();
     grants.sort_by(|a, b| {
         origin_rank(&a.origin)
@@ -225,58 +252,70 @@ fn print_policy(ctx: &Context, policy: &Policy) {
     });
     for g in grants {
         let note = if g.create { " (will be created)" } else { "" };
-        println!(
+        outln!(
+            out,
             "  {:<4} {:<48} {}{note}",
             g.access.to_string(),
             ctx.show(&g.path),
             g.origin
         );
     }
-    println!("  everything else: denied");
+    outln!(out, "  everything else: denied");
 }
 
-fn print_explain(source: &Source, ctx: &Context, plan: &Plan, skipped: &[cant_policy::Skipped]) {
-    println!("cant:         {} ({source})", plan.cant);
-    println!("program:      {}", plan.program.display());
+fn print_explain(
+    out: &mut String,
+    source: &Source,
+    ctx: &Context,
+    plan: &Plan,
+    skipped: &[cant_policy::Skipped],
+) {
+    outln!(out, "cant:         {} ({source})", plan.cant);
+    outln!(out, "program:      {}", plan.program.display());
     let argv: Vec<String> = std::iter::once(&plan.argv0)
         .chain(plan.args.iter())
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    println!("argv:         {}", argv.join(" "));
+    outln!(out, "argv:         {}", argv.join(" "));
     if plan.nested {
-        println!("attenuation:  running inside another cant; showing the intersection");
+        outln!(
+            out,
+            "attenuation:  running inside another cant; showing the intersection"
+        );
     }
-    print_policy(ctx, &plan.effective);
+    print_policy(out, ctx, &plan.effective);
     for s in skipped {
-        println!(
+        outln!(
+            out,
             "not found, not granted: {} ({})",
             display_path(&s.path, &ctx.home),
             s.origin
         );
     }
     if !plan.missing_libs.is_empty() {
-        println!("libraries not found: {}", plan.missing_libs.join(", "));
+        outln!(out, "libraries not found: {}", plan.missing_libs.join(", "));
     }
 }
 
-fn inspect(name: &str) -> Result<ExitCode, Failure> {
+fn inspect(name: &str, out: &mut String) -> Result<ExitCode, Failure> {
     let (found, ctx, plan, skipped) = prepare(name, &[], &[])?;
     let text = found.text;
     let digest = cant_store::Digest::of_file(&plan.program)
         .map_err(|e| Failure::new(format!("{}: {e}", plan.program.display())))?;
-    println!("manifest: {}", found.source);
-    println!("---");
-    print!("{text}");
+    outln!(out, "manifest: {}", found.source);
+    outln!(out, "---");
+    out.push_str(&text);
     if !text.ends_with('\n') {
-        println!();
+        outln!(out);
     }
-    println!("---");
-    println!("binary:       {}", plan.program.display());
-    println!("digest:       {digest}");
-    println!("capabilities (without command-line files):");
-    print_policy(&ctx, &plan.effective);
+    outln!(out, "---");
+    outln!(out, "binary:       {}", plan.program.display());
+    outln!(out, "digest:       {digest}");
+    outln!(out, "capabilities (without command-line files):");
+    print_policy(out, &ctx, &plan.effective);
     for s in skipped {
-        println!(
+        outln!(
+            out,
             "not found, not granted: {} ({})",
             display_path(&s.path, &ctx.home),
             s.origin
@@ -285,53 +324,59 @@ fn inspect(name: &str) -> Result<ExitCode, Failure> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn show(name: &str) -> Result<ExitCode, Failure> {
+fn show(name: &str, out: &mut String) -> Result<ExitCode, Failure> {
     let found = locate(name)?;
-    print!("{}", found.text);
+    out.push_str(&found.text);
     if !found.text.ends_with('\n') {
-        println!();
+        outln!(out);
     }
     Ok(ExitCode::SUCCESS)
 }
 
-fn list() -> Result<ExitCode, Failure> {
+fn list(out: &mut String) -> Result<ExitCode, Failure> {
     for entry in Catalog::standard(&home_dir()?).list() {
         let description = entry
             .description
             .unwrap_or_else(|e| format!("(invalid: {e})"));
-        println!("{:<12} {description:<60} {}", entry.name, entry.source);
+        outln!(out, "{:<12} {description:<60} {}", entry.name, entry.source);
     }
     Ok(ExitCode::SUCCESS)
 }
 
-fn check() -> ExitCode {
+fn check(out: &mut String) -> ExitCode {
     let release = std::fs::read_to_string("/proc/sys/kernel/osrelease")
         .map(|s| s.trim().to_owned())
         .unwrap_or_else(|_| std::env::consts::OS.to_owned());
-    println!("kernel:   {release}");
+    outln!(out, "kernel:   {release}");
     let support = cant_launch::probe_kernel();
     let mut ok = true;
     match support.landlock_abi {
         Some(abi) if abi >= 4 => {
-            println!("landlock: ABI {abi} (filesystem and TCP rules)");
+            outln!(out, "landlock: ABI {abi} (filesystem and TCP rules)");
         }
         Some(abi) if abi >= 3 => {
-            println!(
+            outln!(
+                out,
                 "landlock: ABI {abi} (filesystem rules; no TCP rules, seccomp blocks network)"
             );
         }
         Some(abi) => {
-            println!("landlock: ABI {abi} (too old: at least 3 / Linux 6.2 is required)");
+            outln!(
+                out,
+                "landlock: ABI {abi} (too old: at least 3 / Linux 6.2 is required)"
+            );
             ok = false;
         }
         None => {
-            println!(
+            outln!(
+                out,
                 "landlock: not available (kernel without Landlock, or not in the `lsm=` list)"
             );
             ok = false;
         }
     }
-    println!(
+    outln!(
+        out,
         "seccomp:  {}",
         if support.seccomp_arch {
             format!("supported on {}", std::env::consts::ARCH)
@@ -341,10 +386,10 @@ fn check() -> ExitCode {
         }
     );
     if ok {
-        println!("ok: cants can run here");
+        outln!(out, "ok: cants can run here");
         ExitCode::SUCCESS
     } else {
-        println!("cants cannot run here");
+        outln!(out, "cants cannot run here");
         ExitCode::from(1)
     }
 }
