@@ -111,6 +111,8 @@ Prepare `crates/cantainer` to publish as `cantainer` 0.0.1 with real, working fu
   around it quietly.
 - Prefer boring, explicit code. This is security software: correctness and clear errors beat cleverness.
 - Commit in small, logical steps with clear messages.
+- Run `dev/check.sh` before every push of code (all targets, not just the host); CI checks
+  x86_64, aarch64 and riscv64, and a host-only check missed a lint on 2026-11-12.
 - Push each commit to `main` (the maintainer asked for small commits and pushes, 2026-11-11).
 - **Never run `cargo publish` without asking first.**
 
