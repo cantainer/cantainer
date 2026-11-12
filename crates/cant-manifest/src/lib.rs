@@ -657,6 +657,10 @@ pass = ["*", "LD_PRELOAD", "L*", "9X"]
     #[test]
     fn example_manifests_are_valid() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        if !dir.is_dir() {
+            eprintln!("SKIP: no examples directory (running from a published crate)");
+            return;
+        }
         let mut seen = 0;
         for entry in std::fs::read_dir(&dir).expect("examples dir") {
             let path = entry.expect("entry").path();

@@ -113,62 +113,23 @@ Prepare `crates/cantainer` to publish as `cantainer` 0.0.1 with real, working fu
 - Commit in small, logical steps with clear messages.
 - **Never run `cargo publish` or push to the remote without asking first.**
 
-## Design decisions (settled 2026-11-11)
-The maintainer accepted all recommendations. Move these into `docs/ARCHITECTURE.md` when it exists.
+## Design decisions
+Recorded in `docs/ARCHITECTURE.md` (decisions and rejected alternatives); keep it current.
+Highlights: Landlock + seccomp, no namespaces, no supervisor (`exec`), protected paths with
+`--grant` override, seccomp-first network blocking (no netns fallback), `unix_sockets`
+capability, path-based metadata syscalls blocked, x32 guard, minimum Landlock ABI 3, own ELF
+reader, attenuation via kernel stacking + `CANT_POLICY`.
 
-1. **Protected paths.** A built-in list (`cant-policy/src/protect.rs`) is never reachable by an
-   implicit grant (manifest or powerbox): secrets (`~/.ssh`, `~/.gnupg`, `~/.aws`, …) get no access,
-   persistence points (`~/.bashrc`, `~/.config/cantainer`, …) are read-only. A grant that *contains*
-   a protected path (e.g. `$CWD` = home) is refused too, because Landlock has no deny rules.
-   `--grant PATH[:r|rw]` is the explicit override.
-2. **exec model.** `cant` restricts itself and `exec`s the program; no parent process. Branded
-   denials (`cant: cat can't read ~/.ssh/id_rsa (...)`) only for pre-launch refusals; `--explain`
-   prints the effective policy (dry run). Exit code 125 for cant's own refusals.
-3. **Network.** seccomp is the primary control: `network = false` refuses `socket()` for every
-   non-Unix family (covers UDP/DNS/raw, works on every kernel, no user namespace). Landlock TCP
-   rules are a second layer when ABI ≥ 4. **No netns fallback** (it's never needed with seccomp,
-   and Ubuntu 24.04 restricts unprivileged user namespaces). Warn when ABI < 4.
-4. **No namespaces at all** in the core path.
-5. **Libraries.** Own bounds-checked ELF reader (`cant-launch/src/linux/elf.rs`, positioned reads
-   only; goblin was dropped because it needs the whole file). Grants: interpreter rx, libs r,
-   glibc-hwcaps variants, plus a small runtime base and manifest `fs.ro`.
+## Status (2026-11-12)
+Milestone 0 is implemented and pushed: all five crates, `cant run/inspect/list/check`,
+`--explain`, `--grant`, attenuation wired into nested `cant`, 13 sandbox integration tests,
+CI (lint, test, sandbox, macOS), docs, Lima config, vhs tape, benchmark (~1.4 ms overhead).
+`cargo publish --dry-run --workspace` succeeds.
 
-Found while designing (also settled):
-- **Unix sockets:** Landlock < ABI 9 can't stop `connect()` to pathname sockets (docker.sock,
-  D-Bus). New manifest capability `unix_sockets` (default false); seccomp refuses `socket(AF_UNIX)`
-  unless granted. Landlock `ResolveUnix` and abstract-socket/signal scopes are added best-effort.
-- **Metadata:** Landlock doesn't control chmod/chown/xattr/utimes. Baseline seccomp refuses the
-  path-based variants (fd-based ones stay allowed). Verify vim and git still work; if not, add a
-  manifest opt-in.
-- **x32 bypass:** seccompiler only checks the arch, so x86_64 needs an extra hand-written guard
-  filter refusing `nr >= 0x40000000`. `clone3` → ENOSYS (glibc falls back to inspectable `clone`).
-- **Minimum Landlock ABI 3** (kernel 6.2): below that `truncate` isn't controlled. Refuse to run.
-  Detect the exact ABI from `RestrictionStatus.landlock` (the crate has no public probe).
-- **Attenuation:** kernel stacking (Landlock + seccomp) enforces it. `cant` passes its effective
-  policy to children in `CANT_POLICY` (TOML) for display/pre-flight only; a forged value can't widen
-  real rights.
-- **Writable file args that don't exist** are created empty (`create_new`, refuses dangling symlinks)
-  so Landlock has an inode to grant.
-- **Bare program names** resolve via a fixed system dir list, never the caller's `$PATH`.
-
-## Status (2026-11-11)
-Done and pushed: workspace + licenses, `cant-manifest` (+ examples cat/curl/git/vim),
-`cant-policy` (access, powerbox, protected paths, `intersect` with property tests, `build`),
-`cant-store` (`Digest`, `Store` trait stub), WIP `cant-launch` ELF resolver (not wired in).
-
-Next, in order:
-1. `cant-launch`: `linux/landlock.rs` (access mapping, scopes, ABI ≥ 3 check), `linux/seccomp.rs`
-   (EPERM filter, clone3 ENOSYS filter, x32 guard), runtime base grants, env filtering, create
-   pending files, `exec`; non-Linux stub errors. Run `cargo clippy` (not yet run on any crate).
-2. `cantainer` CLI: `cant run [--explain] [--grant ...] <cant> [args]`, `cant inspect`, `cant check`.
-   Manifest lookup: `~/.config/cantainer/cants/`, then `./examples/`.
-3. Integration tests (Linux-gated, hermetic HOME, skip without Landlock): the four demo commands,
-   local TCP listener for the curl test, `vim -es` for the vim test, nested-cant attenuation.
-4. `benches/startup.sh` (hyperfine, 1k runs) and record numbers in README.
-5. CI (`fmt`, `clippy -D warnings`, tests, Landlock ABI job, `cargo check` on macOS), docs
-   (README, VISION, ARCHITECTURE, MANIFEST, SECURITY, CONTRIBUTING), `dev/lima.yaml`
-   (Lima ≥ 2.0 `base: template:ubuntu-24.04`, writable home mount), `demo/demo.tape`.
-6. `cargo publish --dry-run` for all five crates (ask before publishing).
-
-Repo note: `.git/hooks` has Git LFS hooks but git-lfs isn't installed, so `git push` fails;
-pushes so far used `--no-verify`. Fix by installing git-lfs or deleting the hooks.
+Open items:
+- Publish `cant-manifest`, `cant-policy`, `cant-launch`, `cant-store`, `cantainer` 0.0.1:
+  **ask the maintainer first.**
+- Render `demo/demo.gif` with vhs (not installed in the dev container) and add it to the README.
+- `dev/lima.yaml` has not been tested on a Mac yet.
+- Git LFS hooks in `.git/hooks` without git-lfs installed: `git push` fails; pushes use
+  `--no-verify`. Install git-lfs or delete the hooks.
