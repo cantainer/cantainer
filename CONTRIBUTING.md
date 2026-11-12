@@ -24,12 +24,12 @@ cargo test --workspace             # unit + integration tests
 
 ```sh
 cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo check --workspace --all-targets --target aarch64-apple-darwin   # optional: macOS build
+dev/check.sh        # fmt check, clippy for every supported target, tests: what CI runs
 ```
 
-CI runs the same checks, plus the sandbox integration tests on GitHub's Ubuntu runners.
+`dev/check.sh` checks x86_64 and aarch64 (glibc and musl) and riscv64; it says which targets it
+skipped because their standard library isn't installed. CI runs the same checks, the sandbox
+tests on x86_64 and natively on arm64, and a macOS build.
 
 ## Rules of the road
 
