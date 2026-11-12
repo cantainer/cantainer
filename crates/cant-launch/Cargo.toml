@@ -21,6 +21,7 @@ thiserror.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock.workspace = true
 libc.workspace = true
+rustix.workspace = true
 seccompiler.workspace = true
 
 [dev-dependencies]

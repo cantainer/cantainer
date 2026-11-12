@@ -18,6 +18,7 @@ cant-launch = { path = "crates/cant-launch", version = "=0.0.1" }
 cant-store = { path = "crates/cant-store", version = "=0.0.1" }
 
 libc = "0.2.191"
+rustix = { version = "1.1.6", default-features = false, features = ["std", "fs"] }
 clap = { version = "4.6.7", features = ["derive"] }
 landlock = "0.4.7"
 proptest = "1.12.0"

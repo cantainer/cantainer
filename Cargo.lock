@@ -130,6 +130,7 @@ dependencies = [
  "cant-policy",
  "landlock",
  "libc",
+ "rustix",
  "seccompiler",
  "tempfile",
  "thiserror",

@@ -4,11 +4,23 @@ use std::os::unix::fs::FileTypeExt;
 
 use cant_policy::{Access, Policy};
 use landlock::{
-    ABI, Access as _, AccessFs, AccessNet, BitFlags, LandlockStatus, PathBeneath, PathFd, Ruleset,
+    ABI, Access as _, AccessFs, AccessNet, BitFlags, LandlockStatus, PathBeneath, Ruleset,
     RulesetAttr, RulesetCreatedAttr, RulesetStatus, Scope,
 };
 
 use crate::LaunchError;
+
+/// Opens `path` with `O_PATH`, for use as the parent of a Landlock rule.
+///
+/// We don't use `landlock::PathFd`: it opens through `std::fs::OpenOptions`, and on musl
+/// targets std strips `O_PATH` from custom flags (musl's `O_ACCMODE` includes `O_SEARCH`,
+/// which equals `O_PATH`). The path is then opened for real: `/dev/tty` without a controlling
+/// terminal fails with `ENXIO`, a FIFO blocks, an execute-only file fails. rustix issues the
+/// `open` system call directly, so `O_PATH` is kept on every libc.
+fn path_fd(path: &std::path::Path) -> std::io::Result<rustix::fd::OwnedFd> {
+    use rustix::fs::{Mode, OFlags};
+    rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, Mode::empty()).map_err(Into::into)
+}
 
 /// The newest Landlock ABI this build knows. Rights from newer ABIs than the running kernel
 /// supports are dropped (best effort); [`MIN_ABI`] is enforced separately.
@@ -100,15 +112,15 @@ pub fn restrict(policy: &Policy) -> Result<Enforced, LaunchError> {
         if access.is_empty() {
             continue;
         }
-        let fd = PathFd::new(&grant.path)
-            .map_err(|e| err(&format!("open {}", grant.path.display()), e))?;
+        let fd =
+            path_fd(&grant.path).map_err(|e| err(&format!("open {}", grant.path.display()), e))?;
         created = created
             .add_rule(PathBeneath::new(fd, access))
             .map_err(|e| err(&format!("rule for {}", grant.path.display()), e))?;
     }
     if policy.unix_sockets {
         // ABI 9+: connecting to pathname Unix sockets is a filesystem right.
-        let fd = PathFd::new("/").map_err(|e| err("open /", e))?;
+        let fd = path_fd(std::path::Path::new("/")).map_err(|e| err("open /", e))?;
         created = created
             .add_rule(PathBeneath::new(fd, AccessFs::ResolveUnix))
             .map_err(|e| err("unix socket rule", e))?;
@@ -139,7 +151,7 @@ pub fn probe_abi() -> Option<i32> {
         .ok()?
         .create()
         .ok()?;
-    let fd = PathFd::new("/").ok()?;
+    let fd = path_fd(std::path::Path::new("/")).ok()?;
     let status = ruleset
         .add_rule(PathBeneath::new(fd, AccessFs::Execute))
         .ok()?
@@ -151,6 +163,24 @@ pub fn probe_abi() -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_fd_does_not_open_the_file() {
+        // With O_PATH, opening /dev/tty succeeds even without a controlling terminal, and a
+        // FIFO does not block.
+        assert!(path_fd(std::path::Path::new("/dev/tty")).is_ok());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let fifo = dir.path().join("fifo");
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            &fifo,
+            rustix::fs::FileType::Fifo,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+            0,
+        )
+        .expect("mkfifo");
+        assert!(path_fd(&fifo).is_ok());
+    }
 
     #[test]
     fn access_mapping() {
