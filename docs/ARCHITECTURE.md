@@ -189,6 +189,27 @@ policies, paths and rights.
 The value is informational. A cant that forges it can only change what the nested `cant` prints,
 never what the kernel allows.
 
+### Composing cants: `capabilities.cants`
+
+Attenuation means an enclosing cant needs the union of what its nested cants need. Writing
+that union by hand (git's config files, rg's NSS files, every library) is error-prone and
+breaks whenever a manifest changes. `cants = [...]` computes it at launch from the listed
+manifests, using the same policy builder as `cant run`, and labels the grants. It also grants
+the `cant` executable and the manifest directories, which the nested `cant` reads.
+
+The nested cant is still narrower than the enclosing one: its own Landlock ruleset is stacked
+on top, and the kernel enforces both. Programs in the listed cants can also be run directly by
+the enclosing cant; they then run with the enclosing cant's rights, which is why those rights
+should stay small (agent-sh: the current directory, no network).
+
+Rejected:
+
+- **Union by hand in each manifest**: duplicated, drifts.
+- **Granting the enclosing cant "everything its children could need" (e.g. `/usr`)**: hides
+  the actual rights and grows the attack surface for programs run directly.
+- **A supervisor that launches nested cants on request**: contradicts "no daemon, no
+  supervisor" and adds an IPC surface.
+
 ### Manifest lookup
 
 Order: `~/.config/cantainer/cants/` (the user), `/etc/cantainer/cants/` (the administrator),

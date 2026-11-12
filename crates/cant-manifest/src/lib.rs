@@ -125,6 +125,11 @@ pub struct Capabilities {
     /// Programs this cant may execute (absolute paths, directories, or bare names).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exec: Vec<String>,
+    /// Cants this cant may run with `cant run NAME`. Its rights include theirs (minus the
+    /// files later named on their command lines), so the nested cants work; `cant` itself
+    /// and the manifest directories are granted too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cants: Vec<String>,
 }
 
 /// Filesystem grants. Paths may start with `~` (home) or `$CWD` (directory `cant` runs in).
@@ -475,6 +480,11 @@ impl Manifest {
                 }
             }
         }
+        for (i, name) in self.capabilities.cants.iter().enumerate() {
+            if let Err(e) = validate_name(name) {
+                bad(format!("capabilities.cants[{i}]"), e);
+            }
+        }
         for (i, raw) in self.env.pass.iter().enumerate() {
             if let Err(e) = EnvPattern::parse(raw) {
                 bad(format!("env.pass[{i}]"), e);
@@ -672,6 +682,16 @@ set = { CARGO_NET_OFFLINE = "true", TMPDIR = "$CWD/target/tmp", CARGO_HOME = "~/
                 "env.set.TMPDIR"
             ]
         );
+    }
+
+    #[test]
+    fn cants_must_be_names() {
+        let text = CAT.replace(
+            "[env]",
+            "[capabilities]\ncants = [\"git\", \"../x\"]\n[env]",
+        );
+        let fields: Vec<String> = problems_of(&text).into_iter().map(|p| p.field).collect();
+        assert_eq!(fields, vec!["capabilities.cants[1]"]);
     }
 
     #[test]

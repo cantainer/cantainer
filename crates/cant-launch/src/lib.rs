@@ -122,6 +122,17 @@ pub enum LaunchError {
         /// Cause.
         source: std::io::Error,
     },
+    /// Running inside another cant that may not run this cant's program.
+    #[error(
+        "{cant} isn't available here: the enclosing cant may not run {shown} \
+         (list `{cant}` in its capabilities.cants)"
+    )]
+    ParentCannotRun {
+        /// Cant name.
+        cant: String,
+        /// The program, for display.
+        shown: String,
+    },
     /// The enclosing cant does not allow a file named on the command line.
     #[error("{cant} can't {verb} {shown} (not granted by the enclosing cant)")]
     ParentDenies {

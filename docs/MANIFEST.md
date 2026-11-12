@@ -131,6 +131,7 @@ Grants for files named on the command line:
 | `fs.ro` | `[]` | Paths to read: a file, or a whole directory tree. |
 | `fs.rw` | `[]` | Paths to read and write: create, modify, rename and delete within. |
 | `exec` | `[]` | Programs this cant may execute: absolute paths, directories (everything beneath), or bare names. |
+| `cants` | `[]` | Cants this cant may run with `cant run NAME` (for example an agent's shell: `cants = ["git", "rg"]`). See below. |
 
 Paths in `fs.ro`, `fs.rw` and `exec` take one of these forms:
 
@@ -145,6 +146,19 @@ The program's own executable, its ELF interpreter and its shared libraries are g
 automatically. So is a small runtime base: the loader cache, locale, time zone and terminfo
 data, plus `/dev/null`, `/dev/tty`, `/dev/zero`, `/dev/full`, `/dev/random` and `/dev/urandom`.
 Libraries of `exec` targets are resolved for files, but not for directories.
+
+### `cants`: running other cants
+
+Rights only shrink: a `cant run git` inside another cant gets the intersection of git's
+manifest and the enclosing cant's rights. So a cant that runs git must already hold what git
+needs. `cants = ["git"]` adds exactly that: git's grants (built as `cant run git` would build
+them, without command-line files), its program and libraries, its network and socket rights, its
+environment patterns, plus the `cant` executable and the manifest directories. `--explain`
+labels these grants `cant git`. A listed cant whose program isn't installed is skipped.
+
+Files later named on the nested cant's command line must still be within the enclosing cant's
+own grants, which is why the built-in `agent-sh` has `fs.rw = ["$CWD"]`. A cant that isn't
+listed can't run inside it; `cant` says so (`curl-net isn't available here`).
 
 ## `[env]`
 

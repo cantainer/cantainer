@@ -45,6 +45,19 @@ pub fn plan(
         add_existing(&mut policy, Path::new(path), Access::RW, Origin::Runtime);
     }
 
+    // Inside another cant, its rights bound ours: say so plainly if it can't run the program.
+    if let Some(parent) = parent {
+        if !parent
+            .access_at(&built.program_canonical)
+            .contains(Access::RX)
+        {
+            return Err(LaunchError::ParentCannotRun {
+                cant: manifest.name.clone(),
+                shown: display_path(&built.program_canonical, home),
+            });
+        }
+    }
+
     // The entrypoint must be a usable ELF executable; exec targets are best effort.
     let main = elf::resolve(&built.program_canonical)?;
     let mut resolved = vec![main];

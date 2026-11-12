@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 mod catalog;
+mod compose;
 mod scaffold;
 
 use std::ffi::OsString;
@@ -225,7 +226,14 @@ fn prepare(
 ) -> Result<(Found, Context, Plan, Vec<cant_policy::Skipped>), Failure> {
     let found = locate(name)?;
     let ctx = context()?;
-    let built = cant_policy::build(&found.manifest, &ctx, args, grants)?;
+    let mut built = cant_policy::build(&found.manifest, &ctx, args, grants)?;
+    compose::include_cants(
+        &found.manifest,
+        &mut built,
+        &ctx,
+        &Catalog::standard(&home_dir()?),
+    )
+    .map_err(Failure::new)?;
     let skipped = built.skipped.clone();
     let parent = parent_policy()?;
     let plan = cant_launch::plan(&found.manifest, built, args, parent.as_ref(), &ctx.home)?;
@@ -250,7 +258,8 @@ fn origin_rank(o: &Origin) -> u8 {
         Origin::ManifestExec => 3,
         Origin::Executable => 4,
         Origin::Library => 5,
-        Origin::Runtime => 6,
+        Origin::Cant { .. } => 6,
+        Origin::Runtime => 7,
     }
 }
 
