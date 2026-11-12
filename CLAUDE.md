@@ -125,11 +125,13 @@ reader, attenuation via kernel stacking + `CANT_POLICY`.
 Milestone 0 is implemented and pushed: all five crates, `cant run/inspect/list/check`,
 `--explain`, `--grant`, attenuation wired into nested `cant`, 13 sandbox integration tests,
 CI (lint, test, sandbox, macOS), docs, Lima config, vhs tape, benchmark (~1.4 ms overhead).
-`cargo publish --dry-run --workspace` succeeds.
+Published 2026-11-12: `cantainer`, `cant-manifest`, `cant-policy`, `cant-launch`, `cant-store`
+0.0.1 on crates.io (tag `v0.0.1`). The maintainer ran `cargo publish` from the codespace with the
+`CRATES_TOKEN` secret.
 
 Open items:
-- Publish `cant-manifest`, `cant-policy`, `cant-launch`, `cant-store`, `cantainer` 0.0.1:
-  **ask the maintainer first.**
+- Set up crates.io Trusted Publishing (GitHub Actions OIDC) for the five crates and a manual
+  release workflow, so future releases need no long-lived token.
 - Render `demo/demo.gif` with vhs (not installed in the dev container) and add it to the README.
 - `dev/lima.yaml` has not been tested on a Mac yet.
 - Git LFS hooks in `.git/hooks` without git-lfs installed: `git push` fails; pushes use
