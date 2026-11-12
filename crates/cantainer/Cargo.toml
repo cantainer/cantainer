@@ -25,6 +25,8 @@ cant-manifest.workspace = true
 cant-policy.workspace = true
 cant-store.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
+clap_mangen.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

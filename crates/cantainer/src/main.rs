@@ -14,7 +14,7 @@ use std::process::ExitCode;
 use cant_launch::{LaunchError, POLICY_ENV, Plan};
 use cant_policy::{Context, Origin, Policy, PolicyError, UserGrant, display_path};
 use catalog::{Catalog, Found, Source};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 /// Appends a line to a command's output. Commands write into a buffer that `main` prints, so a
 /// closed pipe (`cant list | head`) ends `cant` quietly instead of panicking in `println`.
@@ -73,6 +73,17 @@ enum Command {
     },
     /// Check whether this kernel can sandbox cants
     Check,
+    /// Print a shell completion script: `cant completions bash > /etc/bash_completion.d/cant`
+    Completions {
+        /// bash, zsh, fish, elvish or powershell
+        shell: clap_complete::Shell,
+    },
+    /// Write the man pages (cant.1, cant-run.1, ...) into DIR, for packaging
+    #[command(hide = true)]
+    Man {
+        /// Existing directory to write into
+        dir: PathBuf,
+    },
 }
 
 #[derive(Debug, clap::Args)]
@@ -143,6 +154,13 @@ fn main() -> ExitCode {
         Command::List => list(&mut out),
         Command::New { program, force } => new(&program, force, &mut out),
         Command::Check => Ok(check(&mut out)),
+        Command::Completions { shell } => generated(&mut out, |buf| {
+            clap_complete::generate(shell, &mut Cli::command(), "cant", buf);
+            Ok(())
+        }),
+        Command::Man { dir } => clap_mangen::generate_to(Cli::command(), &dir)
+            .map(|()| ExitCode::SUCCESS)
+            .map_err(|e| Failure::new(format!("{}: {e}", dir.display()))),
     };
     if let Err(e) = write_stdout(&out) {
         if e.kind() != std::io::ErrorKind::BrokenPipe {
@@ -400,6 +418,17 @@ fn new(program: &str, force: bool, out: &mut String) -> Result<ExitCode, Failure
         out,
         "It denies everything. Edit it, then check a run with: cant run --explain {name} ARGS..."
     );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Runs a generator that writes bytes (completions, man page) into the output buffer.
+fn generated(
+    out: &mut String,
+    generate: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>,
+) -> Result<ExitCode, Failure> {
+    let mut buf = Vec::new();
+    generate(&mut buf).map_err(|e| Failure::new(e.to_string()))?;
+    out.push_str(&String::from_utf8_lossy(&buf));
     Ok(ExitCode::SUCCESS)
 }
 
