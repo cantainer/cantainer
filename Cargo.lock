@@ -124,7 +124,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cant-launch"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cant-manifest",
  "cant-policy",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "cant-manifest"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "serde",
  "thiserror",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "cant-policy"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cant-manifest",
  "proptest",
@@ -159,7 +159,7 @@ dependencies = [
 
 [[package]]
 name = "cant-store"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "sha2",
  "tempfile",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "cantainer"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cant-launch",
  "cant-manifest",

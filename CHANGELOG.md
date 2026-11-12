@@ -8,6 +8,8 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-11-12
+
 ### Added
 - Release process: `dev/release.sh`, a tag-triggered release workflow with an approval gate,
   crates.io Trusted Publishing, and prebuilt static `cant` binaries for x86_64 and aarch64 Linux
@@ -79,5 +81,6 @@ First release.
   path-based metadata changes, `TIOCSTI`, x32 syscalls, and sockets the policy doesn't allow.
 - Refuses to run on kernels below Landlock ABI 3.
 
-[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/cantainer/cantainer/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/cantainer/cantainer/releases/tag/v0.0.1
