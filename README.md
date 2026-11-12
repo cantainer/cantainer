@@ -141,6 +141,7 @@ cant run [--explain] [--grant PATH[:ACCESS]]... <CANT> [ARGS]...
 cant inspect <CANT>     manifest, resolved binary, sha256 digest, capabilities
 cant show <CANT>        print the manifest (to copy and customize)
 cant new <PROGRAM>      write a deny-everything manifest for a program to fill in
+cant completions <SHELL>  shell completions (packages install them, and man pages)
 cant list               cants you can run by name, and where each comes from
 cant check              does this kernel support sandboxing?
 ```

@@ -21,6 +21,8 @@ Security-relevant changes are listed under **Security**.
 - `cant show NAME` prints a manifest, for example to copy and customize it.
 - `cant list` shows where each manifest comes from.
 - `cant new PROGRAM` writes a commented, deny-everything manifest to fill in.
+- `cant completions bash|zsh|fish|elvish|powershell`, and man pages. Packages and the Homebrew
+  formula install both.
 
 ### Changed
 - The example manifests moved from `examples/` to `crates/cantainer/cants/`.
