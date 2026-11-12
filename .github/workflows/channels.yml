@@ -1,0 +1,56 @@
+name: channels
+
+# Publishes an existing GitHub release to the package channels (APT/RPM repositories, Homebrew
+# tap, AUR) without rebuilding anything: for when release.yml's channel step failed, or a
+# channel was set up after the release. Started by hand; waits for approval like a release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version, without the v (e.g. 0.0.3)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SIGNING_KEY_FPR: 93B111A25A4873A32AFAEF6DDEC03DB83F0D540B
+
+jobs:
+  channels:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm createrepo-c apt-utils
+      - name: Import the signing key
+        env:
+          PACKAGE_SIGNING_KEY: ${{ secrets.PACKAGE_SIGNING_KEY }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$VERSION' is not a release version"; exit 1; }
+          printf '%s\n' "$PACKAGE_SIGNING_KEY" | gpg --batch --import
+          gpg --batch --list-secret-keys --with-colons | grep -q "^fpr:::::::::$SIGNING_KEY_FPR:" \
+            || { echo "::error::PACKAGE_SIGNING_KEY is not the key $SIGNING_KEY_FPR"; exit 1; }
+      - name: Download and verify the release files
+        run: |
+          gh release download "v$VERSION" --dir dist \
+            --pattern '*.tar.gz' --pattern '*.deb' --pattern '*.rpm' --pattern 'SHA256SUMS*'
+          gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS
+          (cd dist && sha256sum --check SHA256SUMS)
+          rm dist/SHA256SUMS dist/SHA256SUMS.asc
+      - name: Publish to the package channels
+        env:
+          PACKAGES_DEPLOY_KEY: ${{ secrets.PACKAGES_DEPLOY_KEY }}
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: packaging/publish-channels.sh "$VERSION" dist
