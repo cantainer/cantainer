@@ -260,11 +260,7 @@ fn read_dyn_info(path: &Path) -> Result<DynInfo, ElfError> {
     }
     let load = segments
         .iter()
-        .find(|s| {
-            s.kind == PT_LOAD
-                && strtab_vaddr >= s.vaddr
-                && strtab_vaddr - s.vaddr < s.filesz
-        })
+        .find(|s| s.kind == PT_LOAD && strtab_vaddr >= s.vaddr && strtab_vaddr - s.vaddr < s.filesz)
         .ok_or_else(|| r.bad("string table outside loaded segments"))?;
     let strtab_offset = load
         .offset
@@ -273,7 +269,9 @@ fn read_dyn_info(path: &Path) -> Result<DynInfo, ElfError> {
     let strtab = r.read(strtab_offset, strsz)?;
     let string_at = |off: u64| -> Result<String, ElfError> {
         let start = usize::try_from(off).map_err(|_| r.bad("bad string offset"))?;
-        let rest = strtab.get(start..).ok_or_else(|| r.bad("bad string offset"))?;
+        let rest = strtab
+            .get(start..)
+            .ok_or_else(|| r.bad("bad string offset"))?;
         let end = rest
             .iter()
             .position(|&b| b == 0)
@@ -383,8 +381,10 @@ fn parse_ld_so_conf(path: &Path, out: &mut Vec<PathBuf>, depth: u32) {
 
 /// Expands a single `*` in the last path component (all `ld.so.conf` needs).
 fn glob_last_component(pattern: &Path) -> Vec<PathBuf> {
-    let (Some(dir), Some(name)) = (pattern.parent(), pattern.file_name().and_then(|n| n.to_str()))
-    else {
+    let (Some(dir), Some(name)) = (
+        pattern.parent(),
+        pattern.file_name().and_then(|n| n.to_str()),
+    ) else {
         return Vec::new();
     };
     let Some((prefix, suffix)) = name.split_once('*') else {
@@ -408,7 +408,9 @@ fn glob_last_component(pattern: &Path) -> Vec<PathBuf> {
 
 fn expand_origin(entry: &str, origin: &Path) -> Option<PathBuf> {
     let origin = origin.to_str()?;
-    let expanded = entry.replace("${ORIGIN}", origin).replace("$ORIGIN", origin);
+    let expanded = entry
+        .replace("${ORIGIN}", origin)
+        .replace("$ORIGIN", origin);
     if expanded.contains('$') || !expanded.starts_with('/') {
         // $LIB, $PLATFORM and relative entries are not supported.
         return None;
@@ -497,10 +499,10 @@ mod tests {
     fn resolves_cat_like_ldd() {
         let cat = std::fs::canonicalize("/bin/cat").expect("cat exists");
         let r = resolve(&cat).expect("resolve");
-        let libc = r
-            .libs
-            .iter()
-            .any(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("libc.so")));
+        let libc = r.libs.iter().any(|p| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with("libc.so"))
+        });
         assert!(libc, "libc not found in {r:?}");
         assert!(r.interpreter.is_some(), "cat should be dynamically linked");
         assert!(r.missing.is_empty(), "{r:?}");
