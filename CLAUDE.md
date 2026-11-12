@@ -135,6 +135,14 @@ crates.io (Trusted Publishing), GitHub release (static musl binaries, .deb, .rpm
 SHA256SUMS), signed APT/RPM repos in `cantainer/packages` on Pages, Homebrew tap
 `cantainer/homebrew-tap`, AUR `cantainer-bin`. External setup is done except the AUR.
 
+0.0.2 work (plan approved 2026-11-12): done: built-in manifests + `/etc/cantainer/cants`,
+no `./examples` lookup, `cant show`, `cant new`, completions + man pages, `value_operands`,
+16 built-in cants with sandbox tests, broken-pipe fix. Waiting on the maintainer's design call:
+(a) cargo needs `~/` entrypoints, `[env] set` and probably `/tmp`; (b) an agent shell must hold
+the union of its tools' rights (rights only shrink), so a way to declare "may run cants X, Y"
+is needed before `docs/AGENTS.md` can show a clean setup. Claude Code's Bash allow rules are
+not a security boundary (read-only commands always run), so AGENTS.md must not rely on them.
+
 Open items:
 - Cut 0.0.2 through the release workflow (first real run; ask before pushing the tag). After it
   succeeds, the maintainer revokes the `CRATES_TOKEN` crates.io token and deletes the secrets.
