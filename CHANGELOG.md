@@ -8,6 +8,10 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+### Fixed
+- The Homebrew formula failed to load on macOS (`formula requires at least a URL`) instead of
+  saying that Cantainer needs Linux.
+
 ## [0.0.3] - 2026-11-12
 
 0.0.2 was tagged but never published: its aarch64 release build failed. Its changes ship in

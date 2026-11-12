@@ -20,21 +20,21 @@ cat <<EOF
 class Cantainer < Formula
   desc "Run every executable as a least-privilege capsule"
   homepage "https://github.com/cantainer/cantainer"
+  # A top-level URL so the formula loads everywhere; on macOS, depends_on :linux then refuses
+  # with a clear message (cants need a Linux kernel) instead of failing to load.
+  url "$base/cant-v$version-x86_64-unknown-linux-musl.tar.gz"
   version "$version"
+  sha256 "$sha_x86_64"
   license any_of: ["MIT", "Apache-2.0"]
 
-  depends_on :linux
-
   on_linux do
-    on_intel do
-      url "$base/cant-v$version-x86_64-unknown-linux-musl.tar.gz"
-      sha256 "$sha_x86_64"
-    end
     on_arm do
       url "$base/cant-v$version-aarch64-unknown-linux-musl.tar.gz"
       sha256 "$sha_aarch64"
     end
   end
+
+  depends_on :linux
 
   def install
     bin.install "cant"
