@@ -53,5 +53,5 @@ provision:
 message: |
   Cantainer dev VM is ready.
     limactl shell cantainer
-    cd {{.Dir}}/..   # or wherever your checkout lives under your home directory
+    cd /Users/$USER/path/to/cantainer   # macOS home is mounted at the same path
     cargo run -p cantainer -- check
