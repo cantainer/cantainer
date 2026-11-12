@@ -1,0 +1,26 @@
+# sed: edits text from the files named on its command line and prints the result. Read-only:
+# `sed -i` (in place) is refused by the kernel, because it creates a temporary file next to
+# the original. The first operand is the script, unless -e or -f gives one.
+manifest_version = 1
+name = "sed"
+version = "0.1.0"
+description = "Stream editor (prints; doesn't edit in place)"
+
+[entrypoint]
+path = "sed"
+
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-e", "--expression", "-f", "--file"]
+
+[args.options]
+"-e" = "value"
+"--expression" = "value"
+"-f" = "r"
+"--file" = "r"
+"-l" = "value"
+"--line-length" = "value"
+
+[env]
+pass = ["LANG", "LC_*"]

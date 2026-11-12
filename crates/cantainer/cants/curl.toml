@@ -1,11 +1,9 @@
-# curl WITHOUT a network capability. This is the "denied" half of the demo:
-# `cant run curl https://example.com` fails because the cant may not open IP sockets.
-# Copy this file to ~/.config/cantainer/cants/curl.toml and set `network = true`
-# to get a curl that can reach the network but still only writes the files you name.
+# curl without network access: it fails before connecting. Use it where a tool must not reach
+# the network; use curl-net when it should. It writes only files named with -o/--output.
 manifest_version = 1
 name = "curl"
 version = "0.1.0"
-description = "Transfer a URL (network not granted in this example)"
+description = "Transfer a URL (no network access)"
 
 [entrypoint]
 path = "curl"

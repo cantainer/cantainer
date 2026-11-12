@@ -1,0 +1,60 @@
+# rg (ripgrep): searches the current directory, or the paths named on its command line.
+# Read-only. The first operand is the pattern, unless -e or -f gives one. A config file from
+# RIPGREP_CONFIG_PATH isn't read.
+# It can read the whole current directory, so `cant` refuses to start it from a directory that
+# contains a protected path (such as your home directory).
+manifest_version = 1
+name = "rg"
+version = "0.1.0"
+description = "Search files for a pattern, recursively"
+
+[entrypoint]
+path = "rg"
+
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-e", "--regexp", "-f", "--file"]
+
+[args.options]
+"-e" = "value"
+"--regexp" = "value"
+"-f" = "r"
+"--file" = "r"
+"-g" = "value"
+"--glob" = "value"
+"--iglob" = "value"
+"-t" = "value"
+"--type" = "value"
+"-T" = "value"
+"--type-not" = "value"
+"--type-add" = "value"
+"-m" = "value"
+"--max-count" = "value"
+"-A" = "value"
+"--after-context" = "value"
+"-B" = "value"
+"--before-context" = "value"
+"-C" = "value"
+"--context" = "value"
+"-d" = "value"
+"--max-depth" = "value"
+"-j" = "value"
+"--threads" = "value"
+"-M" = "value"
+"--max-columns" = "value"
+"-r" = "value"
+"--replace" = "value"
+"-E" = "value"
+"--encoding" = "value"
+"--ignore-file" = "r"
+"--color" = "value"
+"--colors" = "value"
+"--sort" = "value"
+"--sortr" = "value"
+
+[capabilities]
+fs.ro = ["$CWD"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "NO_COLOR"]

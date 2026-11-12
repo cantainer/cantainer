@@ -1,0 +1,34 @@
+# tree: shows the current directory, or the directories named on its command line, as a tree.
+# Reads only; `-o FILE` may write FILE.
+# It can read the whole current directory, so `cant` refuses to start it from a directory that
+# contains a protected path (such as your home directory).
+manifest_version = 1
+name = "tree"
+version = "0.1.0"
+description = "List directory contents as a tree"
+
+[entrypoint]
+path = "tree"
+
+[args]
+operands = "r"
+
+[args.options]
+"-o" = "rw"
+"-L" = "value"
+"-P" = "value"
+"-I" = "value"
+"-H" = "value"
+"-T" = "value"
+"--filelimit" = "value"
+"--charset" = "value"
+"--sort" = "value"
+"--timefmt" = "value"
+"--gitfile" = "r"
+"--infofile" = "r"
+
+[capabilities]
+fs.ro = ["$CWD", "/etc/passwd", "/etc/group", "/etc/nsswitch.conf"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "COLUMNS", "LS_COLORS", "TREE_COLORS", "TZ"]

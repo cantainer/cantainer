@@ -1,0 +1,46 @@
+# grep: searches the files named on its command line, or the current directory with -r.
+# Read-only. The first operand is the pattern, unless -e or -f gives one.
+# It can read the whole current directory, so `cant` refuses to start it from a directory that
+# contains a protected path (such as your home directory).
+manifest_version = 1
+name = "grep"
+version = "0.1.0"
+description = "Search files for a pattern"
+
+[entrypoint]
+path = "grep"
+
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-e", "--regexp", "-f", "--file"]
+
+[args.options]
+"-e" = "value"
+"--regexp" = "value"
+"-f" = "r"
+"--file" = "r"
+"-m" = "value"
+"--max-count" = "value"
+"-A" = "value"
+"--after-context" = "value"
+"-B" = "value"
+"--before-context" = "value"
+"-C" = "value"
+"--context" = "value"
+"-d" = "value"
+"--directories" = "value"
+"-D" = "value"
+"--devices" = "value"
+"--include" = "value"
+"--exclude" = "value"
+"--exclude-dir" = "value"
+"--exclude-from" = "r"
+"--label" = "value"
+"--binary-files" = "value"
+
+[capabilities]
+fs.ro = ["$CWD"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "GREP_COLORS", "NO_COLOR"]

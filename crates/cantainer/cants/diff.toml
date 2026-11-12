@@ -1,0 +1,33 @@
+# diff: compares the files or directories named on its command line. Read-only.
+manifest_version = 1
+name = "diff"
+version = "0.1.0"
+description = "Compare files line by line"
+
+[entrypoint]
+path = "diff"
+
+[args]
+operands = "r"
+
+[args.options]
+"--from-file" = "r"
+"--to-file" = "r"
+"-X" = "r"
+"--exclude-from" = "r"
+"-x" = "value"
+"--exclude" = "value"
+"-I" = "value"
+"--ignore-matching-lines" = "value"
+"-F" = "value"
+"--show-function-line" = "value"
+"-L" = "value"
+"--label" = "value"
+"-U" = "value"
+"-C" = "value"
+"-W" = "value"
+"--width" = "value"
+"--tabsize" = "value"
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "COLUMNS"]

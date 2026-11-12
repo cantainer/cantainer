@@ -1,0 +1,25 @@
+# jq: applies a filter to the JSON files named on its command line. Read-only, no network.
+# The first operand is the filter (unless -f gives a filter file). Options that take two values
+# (--arg NAME VALUE, --argjson, --slurpfile, --rawfile) can confuse which operand is the filter;
+# that fails closed (a file isn't granted) or grants a path you typed.
+manifest_version = 1
+name = "jq"
+version = "0.1.0"
+description = "Filter JSON"
+
+[entrypoint]
+path = "jq"
+
+[args]
+operands = "r"
+value_operands = 1
+value_operands_unless = ["-f", "--from-file"]
+
+[args.options]
+"-f" = "r"
+"--from-file" = "r"
+"-L" = "r"
+"--indent" = "value"
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "NO_COLOR", "JQ_COLORS"]

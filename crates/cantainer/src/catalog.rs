@@ -15,8 +15,20 @@ use cant_manifest::{Manifest, validate_name};
 pub const BUILTIN: &[(&str, &str)] = &[
     ("cat", include_str!("../cants/cat.toml")),
     ("curl", include_str!("../cants/curl.toml")),
+    ("curl-net", include_str!("../cants/curl-net.toml")),
+    ("diff", include_str!("../cants/diff.toml")),
+    ("find", include_str!("../cants/find.toml")),
     ("git", include_str!("../cants/git.toml")),
+    ("grep", include_str!("../cants/grep.toml")),
+    ("head", include_str!("../cants/head.toml")),
+    ("jq", include_str!("../cants/jq.toml")),
+    ("ls", include_str!("../cants/ls.toml")),
+    ("rg", include_str!("../cants/rg.toml")),
+    ("sed", include_str!("../cants/sed.toml")),
+    ("tail", include_str!("../cants/tail.toml")),
+    ("tree", include_str!("../cants/tree.toml")),
     ("vim", include_str!("../cants/vim.toml")),
+    ("wc", include_str!("../cants/wc.toml")),
 ];
 
 /// Directory for manifests an administrator installs for all users.

@@ -1,0 +1,24 @@
+# tail: prints the end of the files named on its command line (also with -f). Nothing else.
+manifest_version = 1
+name = "tail"
+version = "0.1.0"
+description = "Print the last lines of files"
+
+[entrypoint]
+path = "tail"
+
+[args]
+operands = "r"
+
+[args.options]
+"-n" = "value"
+"--lines" = "value"
+"-c" = "value"
+"--bytes" = "value"
+"-s" = "value"
+"--sleep-interval" = "value"
+"--pid" = "value"
+"--max-unchanged-stats" = "value"
+
+[env]
+pass = ["LANG", "LC_*"]

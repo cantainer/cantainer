@@ -1,0 +1,56 @@
+# curl with network access. It can read only the CA certificates and the files named with -T
+# or --upload-file, and write only files named with -o/--output, -c/--cookie-jar or -D. -O
+# (remote file name) fails, because the file isn't named on the command line; use -o.
+# `curl -d @file` fails for the same reason; pipe the data in: `curl --data-binary @- URL < file`.
+manifest_version = 1
+name = "curl-net"
+version = "0.1.0"
+description = "Transfer a URL, with network access"
+
+[entrypoint]
+path = "curl"
+
+[args]
+operands = "none"
+
+[args.options]
+"-o" = "rw"
+"--output" = "rw"
+"-T" = "r"
+"--upload-file" = "r"
+"-d" = "value"
+"--data" = "value"
+"-H" = "value"
+"--header" = "value"
+"-X" = "value"
+"--request" = "value"
+"-A" = "value"
+"--user-agent" = "value"
+"-u" = "value"
+"--user" = "value"
+"-w" = "value"
+"--write-out" = "value"
+"-m" = "value"
+"--max-time" = "value"
+"-c" = "rw"
+"--cookie-jar" = "rw"
+"-D" = "rw"
+"--dump-header" = "rw"
+"--cacert" = "r"
+"-K" = "r"
+"--config" = "r"
+"-b" = "value"
+"--cookie" = "value"
+"-e" = "value"
+"--referer" = "value"
+"--connect-timeout" = "value"
+"--retry" = "value"
+"-x" = "value"
+"--proxy" = "value"
+
+[capabilities]
+network = true
+fs.ro = ["/etc/ssl", "/usr/share/ca-certificates", "/etc/ca-certificates", "/etc/pki", "/etc/nsswitch.conf", "/etc/hosts", "/etc/resolv.conf", "/etc/host.conf", "/etc/gai.conf"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "COLUMNS"]

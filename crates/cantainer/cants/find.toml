@@ -1,0 +1,20 @@
+# find: walks the current directory, or the directories named on its command line. Read-only,
+# and it can't run anything: -exec, -delete and -fprint fail.
+# It can read the whole current directory, so `cant` refuses to start it from a directory that
+# contains a protected path (such as your home directory).
+manifest_version = 1
+name = "find"
+version = "0.1.0"
+description = "Search for files in a directory tree"
+
+[entrypoint]
+path = "find"
+
+[args]
+operands = "r"
+
+[capabilities]
+fs.ro = ["$CWD", "/etc/passwd", "/etc/group", "/etc/nsswitch.conf"]
+
+[env]
+pass = ["LANG", "LC_*", "TZ"]

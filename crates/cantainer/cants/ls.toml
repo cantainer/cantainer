@@ -1,0 +1,29 @@
+# ls: lists the current directory, or the files and directories named on its command line.
+# Read-only.
+# It can read the whole current directory, so `cant` refuses to start it from a directory that
+# contains a protected path (such as your home directory).
+manifest_version = 1
+name = "ls"
+version = "0.1.0"
+description = "List directory contents"
+
+[entrypoint]
+path = "ls"
+
+[args]
+operands = "r"
+
+[args.options]
+"-I" = "value"
+"--ignore" = "value"
+"--hide" = "value"
+"-w" = "value"
+"--width" = "value"
+"-T" = "value"
+"--tabsize" = "value"
+
+[capabilities]
+fs.ro = ["$CWD", "/etc/passwd", "/etc/group", "/etc/nsswitch.conf"]
+
+[env]
+pass = ["LANG", "LC_*", "TERM", "COLUMNS", "LS_COLORS", "TZ"]

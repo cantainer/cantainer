@@ -1,0 +1,17 @@
+# wc: counts lines, words and bytes in the files named on its command line. Nothing else.
+manifest_version = 1
+name = "wc"
+version = "0.1.0"
+description = "Count lines, words and bytes"
+
+[entrypoint]
+path = "wc"
+
+[args]
+operands = "r"
+
+[args.options]
+"--files0-from" = "r"
+
+[env]
+pass = ["LANG", "LC_*"]
