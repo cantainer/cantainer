@@ -8,6 +8,8 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-11-12
+
 0.0.2 was tagged but never published: its aarch64 release build failed. Its changes ship in
 0.0.3.
 
@@ -89,5 +91,6 @@ First release.
   path-based metadata changes, `TIOCSTI`, x32 syscalls, and sockets the policy doesn't allow.
 - Refuses to run on kernels below Landlock ABI 3.
 
-[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/cantainer/cantainer/compare/v0.0.1...v0.0.3
 [0.0.1]: https://github.com/cantainer/cantainer/releases/tag/v0.0.1
