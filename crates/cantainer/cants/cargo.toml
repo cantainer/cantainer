@@ -21,8 +21,12 @@ network = false
 # GNU ld sets the executable bit with chmod(path) after writing a program (Rust uses it on
 # aarch64, gcc everywhere). Allowed only for modes within 0775; see docs/MANIFEST.md.
 chmod_by_path = true
-fs.rw = ["$CWD", "~/.cargo/registry", "~/.cargo/git"]
+fs.rw = ["$CWD"]
 fs.ro = [
+  # Downloaded dependencies: read-only, so a build script can't tamper with other crates'
+  # sources. Only cargo-net writes them.
+  "~/.cargo/registry",
+  "~/.cargo/git",
   "~/.rustup",
   "~/.cargo/bin",
   "~/.cargo/config.toml",

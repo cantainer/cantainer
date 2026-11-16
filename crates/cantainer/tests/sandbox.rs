@@ -930,4 +930,49 @@ fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
     let o = run(&["build", "-q"]);
     assert!(!o.status.success(), "the build script read the key");
     assert!(stderr(&o).contains("PermissionDenied"), "{}", stderr(&o));
+
+    // Offline cargo reads the downloaded sources but can't change them: a build script must not
+    // tamper with other crates' code (only cargo-net writes the registry).
+    let registry = f.home.join("registry");
+    std::fs::create_dir_all(registry.join("src")).expect("mkdir");
+    std::fs::write(registry.join("src/dep.rs"), "original").expect("write");
+    let cargo_home = cargo_bin.parent().expect("cargo home");
+    let text = std::fs::read_to_string(m).expect("read manifest").replace(
+        &cargo_home.join("registry").display().to_string(),
+        &registry.display().to_string(),
+    );
+    assert!(text.contains(&registry.display().to_string()), "{text}");
+    let m2 = f.home.join("cargo-registry.toml");
+    std::fs::write(&m2, text).expect("write");
+    std::fs::write(
+        f.work.join("build.rs"),
+        format!(
+            "fn main() {{\n\
+             assert_eq!(std::fs::read_to_string({0:?}).expect(\"read\"), \"original\");\n\
+             assert!(std::fs::write({0:?}, \"tampered\").is_err(), \"registry is writable\");\n\
+             assert!(std::fs::write({1:?}, \"new\").is_err(), \"registry accepts new files\");\n\
+             println!(\"cargo:rustc-env=GREETING=built\");\n\
+             }}\n",
+            registry.join("src/dep.rs"),
+            registry.join("src/new.rs"),
+        ),
+    )
+    .expect("write");
+    let o = f
+        .command(&["run", m2.to_str().expect("utf8"), "build", "-q"])
+        .env("RUSTUP_HOME", &rustup_home)
+        .env("PATH", format!("{}:/usr/bin:/bin", cargo_bin.display()))
+        .stdin(Stdio::null())
+        .output()
+        .expect("run cargo");
+    assert!(
+        o.status.success(),
+        "build script could write the registry, or the build failed: {}{}",
+        stdout(&o),
+        stderr(&o)
+    );
+    assert_eq!(
+        std::fs::read_to_string(registry.join("src/dep.rs")).expect("read"),
+        "original"
+    );
 }
