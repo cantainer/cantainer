@@ -1,9 +1,9 @@
 //! Content-addressed storage for Cantainer.
 //!
-//! Today this crate provides [`Digest`] (SHA-256 identities for files) and the [`Store`]
-//! interface. There is no store implementation yet. The plan (see `docs/VISION.md`) is a
-//! per-file content-addressed store, later backed by composefs and fs-verity, filled from
-//! OCI registries.
+//! [`Digest`] is a SHA-256 identity for files, [`Store`] the interface of a content-addressed
+//! store, and [`FsStore`] its implementation on an ordinary filesystem: one immutable file per
+//! digest, verified when written and when read. Later it can be backed by composefs and
+//! fs-verity (see `docs/CANS.md`).
 
 #![forbid(unsafe_code)]
 
@@ -13,6 +13,9 @@ use std::path::Path;
 use std::str::FromStr;
 
 use sha2::{Digest as _, Sha256};
+
+mod fs;
+pub use fs::FsStore;
 
 /// A SHA-256 content digest, written `sha256:<64 hex digits>` (the OCI convention).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -48,6 +51,11 @@ impl Digest {
     /// The raw 32 bytes.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// The 64 lowercase hex digits, without the `sha256:` prefix.
+    pub fn hex(&self) -> String {
+        self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 }
 
@@ -109,8 +117,6 @@ pub enum StoreError {
 }
 
 /// A content-addressed store of files. Objects are immutable and named by their digest.
-///
-/// Not implemented yet: no type in this crate implements it.
 pub trait Store {
     /// Whether the store holds `digest`.
     fn contains(&self, digest: &Digest) -> Result<bool, StoreError>;

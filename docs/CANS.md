@@ -547,7 +547,7 @@ Phase 2.
 
 ## 13. Phase 2 plan, in order
 
-1. `cant-can` crate: tree, spec parser, unpacker; `cant-store` implemented (put/open/verify,
+1. `cant-pack` crate: tree, spec parser, unpacker; `cant-store` implemented (put/open/verify,
    hard-link farm); `cant pack` for a local can; `cant run ./git.can`.
 2. Launch through the bundled loader. CI matrix: build a can on Ubuntu, run it on Fedora, and the
    reverse.

@@ -1,6 +1,6 @@
 [package]
 name = "cant-store"
-description = "Content-addressed store interface for Cantainer (stub)."
+description = "Content-addressed store for Cantainer."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
