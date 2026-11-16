@@ -47,6 +47,20 @@
   "remoteUser": "vscode",
 
   "customizations": {
+    // Codespaces: let this codespace's token push to and run workflows in cantainer/cans,
+    // where cans are packed and published (approve the permissions when the codespace is
+    // created or rebuilt).
+    "codespaces": {
+      "repositories": {
+        "cantainer/cans": {
+          "permissions": {
+            "contents": "write",
+            "workflows": "write",
+            "actions": "write"
+          }
+        }
+      }
+    },
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",

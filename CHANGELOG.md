@@ -8,9 +8,52 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+### Security
+- More home paths are read-only for every cant, because writing them runs code outside the
+  sandbox later: `~/.gitconfig`, `~/.config/git`, `~/.local/bin`, `~/bin`, `~/.vimrc`,
+  `~/.config/nvim`, `~/.cargo/config.toml`, `~/.config/environment.d`. Read-only protected
+  paths stay readable and executable, so a `~/bin` program still runs.
+- The offline `cargo` cant can no longer write `~/.cargo/registry` or `~/.cargo/git`, so a build
+  script can't tamper with other crates' sources. Only `cargo-net` writes them.
+- `cargo` and `cargo-net` can no longer write `.git`, `.envrc`, `.vscode`, `.idea` or
+  `.githooks` in the project directory (build scripts could plant hooks there). They grant the
+  project's existing entries one by one (`fs.rw = ["$CWD/*"]`) and create `target/` and
+  `Cargo.lock` themselves (`fs.ensure_dirs`, `fs.ensure_files`).
+- **Watched cants:** cants that may write the project directory (`git`, `cargo`, `agent-sh`)
+  run under a supervisor that compares `.git/config`, git hooks, `.envrc`, `.vscode` and
+  similar files before and after the run, including what detached processes did. A change is
+  reported with a session ID; nothing is reverted automatically. Processes still running two
+  seconds after the program exits are stopped. This is detection with a window, not
+  prevention; see SECURITY.md.
+
+### Added
+- `cant diff ID`, `cant revert ID`, `cant keep ID`, `cant log` and `cant verify`: review, undo or
+  accept what a watched cant changed. `cant revert` refuses files that changed again since and
+  never writes through symlinks. A cant can't accept its own changes.
+- Manifests: `fs.rw = ["$CWD/*"]`, `fs.ensure_dirs` and `fs.ensure_files`.
+- **Cans (experimental, unsigned):** redistributable cants that carry their own libraries,
+  libc and ELF loader included, so one built on one distribution runs on another.
+  `cant pack NAME` makes one (an OCI image layout directory with a CycloneDX SBOM),
+  `cant run ./NAME.can` runs it, `cant push`/`cant pull` move it through OCI registries, and
+  `cant run HOST/NAME:TAG` runs a pulled can. Cans aren't signed yet: a can from a registry
+  runs only after you pull it yourself. Design: docs/CANS.md; format: spec/can-format.md.
+- Manifest version 2 for cans: `$CAN` paths and `[pack]`.
+
+### Changed
+- Building for other architectures needs a C compiler for the target: the registry client's
+  TLS (rustls with ring) contains C and assembly. See docs/ARCHITECTURE.md.
+- The `cant` binary is larger (about 9 MB instead of 3 MB) because of the registry client;
+  `cant run` starts as fast as before.
+
 ### Fixed
 - The Homebrew formula failed to load on macOS (`formula requires at least a URL`) instead of
   saying that Cantainer needs Linux.
+
+### Known limitations
+- In a can, programs that check `/proc/self/exe` refuse to run, because a can's program starts
+  through its bundled loader. Ubuntu 26.04's coreutils (uutils) are such programs.
+- `git config` and other commands that rewrite `.git/config` fail in the `git` cant (git sets
+  the lock file's permissions by path, which the sandbox refuses).
 
 ## [0.0.3] - 2026-11-12
 

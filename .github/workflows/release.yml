@@ -151,15 +151,23 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: |
           # Dependency order. Versions already on crates.io are skipped, so a re-run continues.
-          for crate in cant-manifest cant-store cant-policy cant-launch cantainer; do
-            status="$(curl -sS -o /dev/null -w '%{http_code}' \
-              -A 'cantainer-release (https://github.com/cantainer/cantainer)' \
+          ua='cantainer-release (https://github.com/cantainer/cantainer)'
+          for crate in cant-manifest cant-store cant-policy cant-launch cant-pack cant-registry cantainer; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' -A "$ua" \
               "https://crates.io/api/v1/crates/$crate/$VERSION")"
             if [ "$status" = 200 ]; then
               echo "$crate $VERSION is already on crates.io"
-            else
-              cargo publish --locked -p "$crate"
+              continue
             fi
+            # Trusted Publishing works only for crates that exist: a new crate's first version
+            # is published by hand (docs/RELEASING.md, "A new crate").
+            exists="$(curl -sS -o /dev/null -w '%{http_code}' -A "$ua" \
+              "https://crates.io/api/v1/crates/$crate")"
+            if [ "$exists" = 404 ]; then
+              echo "::error::$crate has never been published. Publish $crate $VERSION once by hand and add Trusted Publishing for it (docs/RELEASING.md, 'A new crate'), then re-run this job."
+              exit 1
+            fi
+            cargo publish --locked -p "$crate"
           done
 
       # --- GitHub release ----------------------------------------------------------------

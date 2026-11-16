@@ -38,8 +38,9 @@ builds and publishes everything after a maintainer approves.
 
 1. Build `.deb` and `.rpm` packages (`packaging/packages.sh`), sign the `.rpm` files, write
    `SHA256SUMS` and its signature `SHA256SUMS.asc`.
-2. **crates.io**: publish the five crates in dependency order via Trusted Publishing (no stored
-   token). Versions already on crates.io are skipped.
+2. **crates.io**: publish the seven crates in dependency order via Trusted Publishing (no stored
+   token). Versions already on crates.io are skipped. A crate never published before stops the
+   job (see "A new crate").
 3. **GitHub release** with the tarballs, packages and checksums; notes from the changelog.
    A version with a `-` (e.g. `0.1.0-rc.1`) is marked as a pre-release.
 4. **APT and RPM repositories**: `packaging/update-repos.sh` adds the packages to
@@ -53,12 +54,31 @@ builds and publishes everything after a maintainer approves.
 Steps 4–6 are skipped for pre-releases. Every step skips or replaces what already exists, so
 after a failure fix the cause and click **Re-run failed jobs**.
 
+## A new crate
+
+crates.io allows Trusted Publishing only for a crate that already exists, so the first version
+of a new workspace crate is published by hand. The release workflow stops at such a crate with
+an error naming it (the crates before it are already published). Then, from the release commit
+(`git checkout vX.Y.Z`), with a crates.io API token:
+
+```sh
+cargo publish --locked -p cant-pack        # each new crate, in the order of release.yml
+cargo publish --locked -p cant-registry
+```
+
+On crates.io, open each new crate → Settings → Trusted Publishing, add GitHub
+`cantainer/cantainer`, workflow `release.yml`, environment `release`, and revoke the token if
+it was made for this. Then **Re-run failed jobs**: the workflow skips what is published and
+continues with the rest.
+
+New crates so far: `cant-pack` and `cant-registry` (first published with 0.0.4).
+
 ## One-time setup (done 2026-11-12)
 
 | Where | What |
 |---|---|
 | GitHub → Settings → Environments → `release` | required reviewer: the maintainer; deployment tags: `v*` |
-| crates.io → each of the five crates → Settings → Trusted Publishing | GitHub: `cantainer/cantainer`, workflow `release.yml`, environment `release` |
+| crates.io → each crate → Settings → Trusted Publishing (`cant-pack` and `cant-registry`: after their first publish) | GitHub: `cantainer/cantainer`, workflow `release.yml`, environment `release` |
 | `release` environment secret `PACKAGE_SIGNING_KEY` | private half of `packaging/signing-key.asc` (armored) |
 | `release` environment secret `HOMEBREW_TAP_DEPLOY_KEY` | SSH deploy key with write access to `cantainer/homebrew-tap` |
 | `release` environment secret `PACKAGES_DEPLOY_KEY` | SSH deploy key with write access to `cantainer/packages` |
