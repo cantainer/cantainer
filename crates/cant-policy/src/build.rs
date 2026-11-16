@@ -30,6 +30,8 @@ pub struct Context {
     pub cwd: PathBuf,
     /// Protected paths.
     pub protected: Protected,
+    /// The root of the can's files when running a can (`$CAN` in its manifest).
+    pub can: Option<PathBuf>,
 }
 
 impl Context {
@@ -40,7 +42,14 @@ impl Context {
             home,
             cwd,
             protected,
+            can: None,
         }
+    }
+
+    /// The same context for running a can whose files are in `root`.
+    pub fn with_can(mut self, root: PathBuf) -> Self {
+        self.can = Some(root);
+        self
     }
 
     /// Shows a path relative to home (`~/...`) when possible.
@@ -295,7 +304,14 @@ impl Builder<'_> {
                     return Ok(());
                 }
             },
-            other => other.resolve(&self.ctx.home, &self.ctx.cwd),
+            other => other
+                .resolve(&self.ctx.home, &self.ctx.cwd, self.ctx.can.as_deref())
+                .map_err(|e| {
+                    self.io_err(
+                        Path::new(raw),
+                        io::Error::new(io::ErrorKind::InvalidInput, e),
+                    )
+                })?,
         };
         match std::fs::canonicalize(&path) {
             Ok(canonical) => self.grant(canonical, access, origin, false),
@@ -359,7 +375,14 @@ impl Builder<'_> {
                 io::Error::new(io::ErrorKind::InvalidInput, e),
             )
         })?;
-        let path = spec.resolve(&self.ctx.home, &self.ctx.cwd);
+        let path = spec
+            .resolve(&self.ctx.home, &self.ctx.cwd, self.ctx.can.as_deref())
+            .map_err(|e| {
+                self.io_err(
+                    Path::new(raw),
+                    io::Error::new(io::ErrorKind::InvalidInput, e),
+                )
+            })?;
         let origin = Origin::Manifest;
         match std::fs::symlink_metadata(&path) {
             Ok(m) if (dir && m.file_type().is_dir()) || (!dir && m.file_type().is_file()) => {
@@ -490,7 +513,17 @@ pub fn build(
     }
 
     // 2. The executable.
-    let (program, program_canonical) = resolve_entrypoint(manifest, &ctx.home)?;
+    // A can's own files: read and execute, nothing else from the store.
+    if let Some(root) = &ctx.can {
+        b.policy.add(Grant {
+            path: root.clone(),
+            access: Access::RX,
+            origin: Origin::Can,
+            create: false,
+            dir: false,
+        });
+    }
+    let (program, program_canonical) = resolve_entrypoint(manifest, &ctx.home, ctx.can.as_deref())?;
     b.grant(
         program_canonical.clone(),
         Access::RX,
@@ -532,17 +565,28 @@ pub fn build(
         .set
         .iter()
         .map(|(name, value)| {
-            let value = if value.starts_with("$CWD") || value.starts_with('~') {
-                match PathSpec::parse(value, false) {
-                    Ok(spec) => spec.resolve(&ctx.home, &ctx.cwd).into_os_string(),
-                    Err(_) => value.into(), // unreachable for a validated manifest
-                }
-            } else {
-                value.into()
-            };
-            (name.clone(), value)
+            let value =
+                if value.starts_with("$CWD") || value.starts_with("$CAN") || value.starts_with('~')
+                {
+                    match PathSpec::parse(value, false) {
+                        Ok(spec) => match spec.resolve(&ctx.home, &ctx.cwd, ctx.can.as_deref()) {
+                            Ok(path) => path.into_os_string(),
+                            Err(e) => {
+                                return Err(PolicyError::Io {
+                                    cant: manifest.name.clone(),
+                                    shown: value.clone(),
+                                    source: io::Error::new(io::ErrorKind::InvalidInput, e),
+                                });
+                            }
+                        },
+                        Err(_) => value.into(), // unreachable for a validated manifest
+                    }
+                } else {
+                    value.into()
+                };
+            Ok((name.clone(), value))
         })
-        .collect();
+        .collect::<Result<_, PolicyError>>()?;
 
     Ok(Built {
         policy: b.policy,
@@ -558,6 +602,7 @@ pub fn build(
 pub fn resolve_entrypoint(
     manifest: &Manifest,
     home: &Path,
+    can: Option<&Path>,
 ) -> Result<(PathBuf, PathBuf), PolicyError> {
     let cant = manifest.name.clone();
     let raw = &manifest.entrypoint.path;
@@ -565,6 +610,12 @@ pub fn resolve_entrypoint(
         PathBuf::from(raw)
     } else if let Some(rest) = raw.strip_prefix("~/") {
         home.join(rest)
+    } else if raw == "$CAN" || raw.starts_with("$CAN/") {
+        let root = can.ok_or_else(|| PolicyError::ProgramNotFound {
+            cant: cant.clone(),
+            name: format!("{raw} (`$CAN` is only available when running a can)"),
+        })?;
+        root.join(raw.trim_start_matches("$CAN").trim_start_matches('/'))
     } else {
         find_program(raw).ok_or_else(|| PolicyError::ProgramNotFound {
             cant: cant.clone(),
@@ -706,6 +757,27 @@ operands = "r"
         // An existing symlink at that name is refused, not followed.
         std::os::unix::fs::symlink("/etc", f.work.join("target")).expect("symlink");
         assert!(run(&m, &f, &[], &[]).is_err());
+    }
+
+    #[test]
+    fn a_can_gets_its_own_files_and_nothing_from_the_host_store() {
+        let f = fixture();
+        let root = f.home.join("can-root");
+        std::fs::create_dir_all(root.join("usr/bin")).expect("mkdir");
+        std::fs::copy("/bin/cat", root.join("usr/bin/cat")).expect("copy");
+        let m = "manifest_version = 2\nname = \"cat\"\nversion = \"1\"\n\
+                 [entrypoint]\npath = \"$CAN/usr/bin/cat\"\n[args]\noperands = \"r\"\n\
+                 [env]\nset = { DATA = \"$CAN/usr/share\" }\n";
+        let manifest = Manifest::from_toml_str(m).expect("manifest");
+        let ctx = Context::new(f.home.clone(), f.work.clone()).with_can(root.clone());
+        let built = build(&manifest, &ctx, &[], &[]).expect("build");
+        assert_eq!(built.program_canonical, root.join("usr/bin/cat"));
+        assert!(built.policy.permits(&root.join("usr/bin/cat"), Access::RX));
+        assert!(!built.policy.permits(&root.join("usr/bin/cat"), Access::RW));
+        assert_eq!(built.env_set[0].1, root.join("usr/share").into_os_string());
+        // Without a can, `$CAN` is an error, not an empty path.
+        let plain = Context::new(f.home.clone(), f.work.clone());
+        assert!(build(&manifest, &plain, &[], &[]).is_err());
     }
 
     #[test]

@@ -29,6 +29,8 @@ pub enum Origin {
     Library,
     /// Baseline runtime files every dynamically linked program needs.
     Runtime,
+    /// The files of the can being run.
+    Can,
     /// Needed by a cant this one may run (`capabilities.cants`), or by `cant` itself.
     Cant {
         /// The cant's name (`cant` for the launcher itself).
@@ -46,6 +48,7 @@ impl fmt::Display for Origin {
             Origin::Executable => f.write_str("executable"),
             Origin::Library => f.write_str("library"),
             Origin::Runtime => f.write_str("runtime"),
+            Origin::Can => f.write_str("the can's files"),
             Origin::Cant { name } => write!(f, "cant {name}"),
         }
     }

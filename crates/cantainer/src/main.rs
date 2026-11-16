@@ -397,6 +397,7 @@ fn origin_rank(o: &Origin) -> u8 {
         Origin::ManifestExec => 3,
         Origin::Executable => 4,
         Origin::Library => 5,
+        Origin::Can => 5,
         Origin::Cant { .. } => 6,
         Origin::Runtime => 7,
     }

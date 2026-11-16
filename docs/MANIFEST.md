@@ -211,6 +211,26 @@ A grant that *contains* one of these is refused too. For example, the `git` exam
 name it with `cant run --grant PATH[:ACCESS] ...`. The list is built into `cant`; manifests can't
 change it.
 
+## Version 2: cans
+
+`manifest_version = 2` is the format of a **can**'s manifest (see [CANS.md](CANS.md) and
+[spec/can-format.md](../spec/can-format.md)). It adds:
+
+- **`$CAN`** in `entrypoint.path`, `fs.ro`, `exec` and `env.set`: the directory holding the can's
+  own files, for example `entrypoint.path = "$CAN/usr/bin/git"` or
+  `set = { GIT_EXEC_PATH = "$CAN/usr/lib/git-core" }`. A can's files are always readable and
+  executable by it and never writable, so `$CAN` is refused in `fs.rw`. Outside a can, `$CAN` is
+  an error.
+- **`[pack]`**, read by `cant pack`:
+
+  | Field | Meaning |
+  |---|---|
+  | `include` | Absolute paths (files or trees) copied into the can at the same path. |
+  | `exclude` | Glob patterns (`*`, `**`) of paths under `include` to leave out. |
+  | `elf_roots` | Absolute paths whose ELF files also get their shared libraries packed. |
+
+A version 1 manifest using either is refused with a message saying so.
+
 ## Validation errors
 
 ```

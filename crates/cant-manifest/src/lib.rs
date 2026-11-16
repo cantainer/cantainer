@@ -18,11 +18,15 @@ use serde::{Deserialize, Serialize};
 /// The only manifest format version this crate understands.
 pub const MANIFEST_VERSION: u32 = 1;
 
+/// Format version of a can's manifest: version 1 plus `$CAN` paths and `[pack]`
+/// (see `spec/can-format.md`).
+pub const CAN_MANIFEST_VERSION: u32 = 2;
+
 /// A parsed and validated cant manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
-    /// Format version. Must be [`MANIFEST_VERSION`].
+    /// Format version: [`MANIFEST_VERSION`], or [`CAN_MANIFEST_VERSION`] for cans.
     pub manifest_version: u32,
     /// Short name, e.g. `cat`. Lowercase letters, digits, `.`, `_`, `-`.
     pub name: String,
@@ -42,6 +46,25 @@ pub struct Manifest {
     /// Which environment variables pass through.
     #[serde(default)]
     pub env: EnvSpec,
+    /// How `cant pack` builds a can from this manifest (version 2 only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<PackSpec>,
+}
+
+/// `[pack]`: what `cant pack` puts into a can besides the program and its libraries.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PackSpec {
+    /// Absolute paths (files or directory trees) copied into the can at the same path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<String>,
+    /// Glob patterns (`*`, `**`) of paths under `include` to leave out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
+    /// Absolute paths whose ELF files also get their shared libraries packed (helpers the
+    /// program runs, plugins it loads).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elf_roots: Vec<String>,
 }
 
 /// The executable a cant runs.
@@ -187,6 +210,9 @@ pub enum PathSpec {
     Home(PathBuf),
     /// `$CWD` or `$CWD/src` (stores the part after `$CWD/`)
     Cwd(PathBuf),
+    /// `$CAN` or `$CAN/usr/bin/git`: inside a can's own files (stores the part after `$CAN/`).
+    /// Only valid in version 2 manifests.
+    Can(PathBuf),
     /// `$CWD/*`: every existing entry directly inside the current directory except
     /// [`PROJECT_TRIGGER_NAMES`], which are granted read-only. Only valid in `fs.rw`.
     CwdChildren,
@@ -210,6 +236,10 @@ impl PathSpec {
             (PathSpec::Home(PathBuf::new()), "")
         } else if let Some(rest) = raw.strip_prefix("~/") {
             (PathSpec::Home(PathBuf::from(rest)), rest)
+        } else if raw == "$CAN" {
+            (PathSpec::Can(PathBuf::new()), "")
+        } else if let Some(rest) = raw.strip_prefix("$CAN/") {
+            (PathSpec::Can(PathBuf::from(rest)), rest)
         } else if raw == "$CWD" {
             (PathSpec::Cwd(PathBuf::new()), "")
         } else if let Some(rest) = raw.strip_prefix("$CWD/") {
@@ -221,7 +251,9 @@ impl PathSpec {
                 "`{raw}`: only `~` and `~/...` are supported, not `~user`"
             ));
         } else if raw.starts_with('$') {
-            return Err(format!("`{raw}`: only the `$CWD` variable is supported"));
+            return Err(format!(
+                "`{raw}`: only the `$CWD` and `$CAN` variables are supported"
+            ));
         } else if !raw.contains('/') && allow_bare {
             if raw == "." || raw == ".." {
                 return Err(format!("`{raw}` is not a program name"));
@@ -244,15 +276,25 @@ impl PathSpec {
     }
 
     /// Resolves to a concrete path. Bare names are returned unchanged (as a relative path);
-    /// look them up with a program search first.
-    pub fn resolve(&self, home: &Path, cwd: &Path) -> PathBuf {
-        match self {
+    /// look them up with a program search first. `$CAN` needs the can's root directory and is
+    /// an error outside a can.
+    pub fn resolve(&self, home: &Path, cwd: &Path, can: Option<&Path>) -> Result<PathBuf, String> {
+        Ok(match self {
             PathSpec::Absolute(p) => p.clone(),
             PathSpec::Home(rest) => join_rest(home, rest),
             PathSpec::Cwd(rest) => join_rest(cwd, rest),
+            PathSpec::Can(rest) => match can {
+                Some(root) => join_rest(root, rest),
+                None => return Err("`$CAN` is only available when running a can".into()),
+            },
             PathSpec::CwdChildren => cwd.to_path_buf(),
             PathSpec::Bare(name) => PathBuf::from(name),
-        }
+        })
+    }
+
+    /// Whether the path uses `$CAN`.
+    pub fn is_can(&self) -> bool {
+        matches!(self, PathSpec::Can(_))
     }
 }
 
@@ -423,14 +465,76 @@ impl Manifest {
         let mut out = Vec::new();
         let mut bad = |field: String, message: String| out.push(Problem { field, message });
 
-        if self.manifest_version != MANIFEST_VERSION {
+        let can_format = self.manifest_version == CAN_MANIFEST_VERSION;
+        if self.manifest_version != MANIFEST_VERSION && !can_format {
             bad(
                 "manifest_version".into(),
                 format!(
-                    "unsupported version {} (expected {MANIFEST_VERSION})",
+                    "unsupported version {} (expected {MANIFEST_VERSION}, or \
+                     {CAN_MANIFEST_VERSION} for a can)",
                     self.manifest_version
                 ),
             );
+        }
+        let uses_can = |raw: &str| raw == "$CAN" || raw.starts_with("$CAN/");
+        if !can_format {
+            let mut fields: Vec<(String, &String)> =
+                vec![("entrypoint.path".into(), &self.entrypoint.path)];
+            for (list, entries) in [
+                ("capabilities.fs.ro", &self.capabilities.fs.ro),
+                ("capabilities.fs.rw", &self.capabilities.fs.rw),
+                ("capabilities.exec", &self.capabilities.exec),
+            ] {
+                fields.extend(
+                    entries
+                        .iter()
+                        .enumerate()
+                        .map(|(i, r)| (format!("{list}[{i}]"), r)),
+                );
+            }
+            fields.extend(
+                self.env
+                    .set
+                    .iter()
+                    .map(|(k, v)| (format!("env.set.{k}"), v)),
+            );
+            for (field, raw) in fields {
+                if uses_can(raw) {
+                    bad(field, "`$CAN` needs manifest_version = 2".into());
+                }
+            }
+            if self.pack.is_some() {
+                bad("pack".into(), "`[pack]` needs manifest_version = 2".into());
+            }
+        }
+        if let Some(pack) = &self.pack {
+            for (list, entries) in [
+                ("pack.include", &pack.include),
+                ("pack.elf_roots", &pack.elf_roots),
+            ] {
+                for (i, raw) in entries.iter().enumerate() {
+                    if !matches!(PathSpec::parse(raw, false), Ok(PathSpec::Absolute(_))) {
+                        bad(
+                            format!("{list}[{i}]"),
+                            format!("`{raw}` must be an absolute path"),
+                        );
+                    }
+                }
+            }
+            for (i, pat) in pack.exclude.iter().enumerate() {
+                if pat.is_empty() || pat.contains('\0') {
+                    bad(format!("pack.exclude[{i}]"), "empty pattern".into());
+                }
+            }
+        }
+        // `$CAN` inside `fs.rw` would let a can modify itself.
+        for (i, raw) in self.capabilities.fs.rw.iter().enumerate() {
+            if uses_can(raw) {
+                bad(
+                    format!("capabilities.fs.rw[{i}]"),
+                    "a can's own files are read-only".into(),
+                );
+            }
         }
         if let Err(e) = validate_name(&self.name) {
             bad("name".into(), e);
@@ -458,9 +562,10 @@ impl Manifest {
         match PathSpec::parse(&self.entrypoint.path, true) {
             Ok(PathSpec::Absolute(_) | PathSpec::Bare(_)) => {}
             Ok(PathSpec::Home(p)) if !p.as_os_str().is_empty() => {}
+            Ok(PathSpec::Can(p)) if !p.as_os_str().is_empty() => {}
             Ok(_) => bad(
                 "entrypoint.path".into(),
-                "must be an absolute path, `~/...` or a bare program name".into(),
+                "must be an absolute path, `~/...`, `$CAN/...` or a bare program name".into(),
             ),
             Err(e) => bad("entrypoint.path".into(), e),
         }
@@ -558,7 +663,10 @@ impl Manifest {
                     format!("env.set.{name}"),
                     "value contains a NUL byte".into(),
                 );
-            } else if value.starts_with("$CWD") || value.starts_with('~') {
+            } else if value.starts_with("$CWD")
+                || value.starts_with("$CAN")
+                || value.starts_with('~')
+            {
                 match PathSpec::parse(value, false) {
                     Err(e) => bad(format!("env.set.{name}"), e),
                     Ok(PathSpec::CwdChildren) => bad(
@@ -691,6 +799,55 @@ pass = ["LANG", "LC_*"]
     }
 
     #[test]
+    fn can_paths_and_pack_need_version_2() {
+        let v2 = |extra: &str| {
+            format!(
+                "manifest_version = 2\nname = \"git\"\nversion = \"1\"\n\
+                 [entrypoint]\npath = \"$CAN/usr/bin/git\"\n{extra}"
+            )
+        };
+        let ok = v2(
+            "[capabilities]\nfs.ro = [\"$CAN/usr/share\"]\nexec = [\"$CAN/usr/lib/git-core\"]\n\
+             [env]\nset = { GIT_EXEC_PATH = \"$CAN/usr/lib/git-core\" }\n\
+             [pack]\ninclude = [\"/usr/lib/git-core\"]\nexclude = [\"**/*.pyc\"]\nelf_roots = [\"/usr/lib/git-core\"]\n",
+        );
+        let m = Manifest::from_toml_str(&ok).expect("valid v2");
+        assert_eq!(m.pack.expect("pack").include, ["/usr/lib/git-core"]);
+
+        for bad in [
+            "[capabilities]\nfs.rw = [\"$CAN/x\"]\n",
+            "[pack]\ninclude = [\"relative\"]\n",
+            "[pack]\nelf_roots = [\"$CAN/x\"]\n",
+            "[pack]\nunknown = 1\n",
+        ] {
+            assert!(Manifest::from_toml_str(&v2(bad)).is_err(), "{bad}");
+        }
+        let v1 = ok.replace("manifest_version = 2", "manifest_version = 1");
+        let p = problems_of(&v1);
+        for field in [
+            "entrypoint.path",
+            "capabilities.fs.ro[0]",
+            "env.set.GIT_EXEC_PATH",
+            "pack",
+        ] {
+            assert!(p.iter().any(|x| x.field == field), "{field}: {p:?}");
+        }
+    }
+
+    #[test]
+    fn can_paths_resolve_only_inside_a_can() {
+        let spec = PathSpec::parse("$CAN/usr/bin/git", false).expect("parse");
+        assert!(spec.is_can());
+        let (h, c) = (Path::new("/home/u"), Path::new("/work"));
+        assert_eq!(
+            spec.resolve(h, c, Some(Path::new("/cans/x/root"))),
+            Ok(PathBuf::from("/cans/x/root/usr/bin/git"))
+        );
+        assert!(spec.resolve(h, c, None).is_err());
+        assert!(PathSpec::parse("$CAN/../x", false).is_err());
+    }
+
+    #[test]
     fn parses_minimal_manifest() {
         let m = Manifest::from_toml_str(CAT).expect("valid");
         assert_eq!(m.name, "cat");
@@ -730,7 +887,7 @@ pass = ["LANG", "LC_*"]
 
     #[test]
     fn rejects_wrong_version() {
-        let text = CAT.replace("manifest_version = 1", "manifest_version = 2");
+        let text = CAT.replace("manifest_version = 1", "manifest_version = 3");
         let p = problems_of(&text);
         assert_eq!(p[0].field, "manifest_version");
     }
@@ -876,7 +1033,12 @@ pass = ["*", "LD_PRELOAD", "L*", "9X"]
     fn path_specs() {
         let home = Path::new("/home/u");
         let cwd = Path::new("/work");
-        let r = |s: &str| PathSpec::parse(s, false).expect("valid").resolve(home, cwd);
+        let r = |s: &str| {
+            PathSpec::parse(s, false)
+                .expect("valid")
+                .resolve(home, cwd, None)
+                .expect("resolves")
+        };
         assert_eq!(r("~"), PathBuf::from("/home/u"));
         assert_eq!(r("~/.vimrc"), PathBuf::from("/home/u/.vimrc"));
         assert_eq!(r("$CWD"), PathBuf::from("/work"));
