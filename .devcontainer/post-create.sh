@@ -13,7 +13,14 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   util-linux \
   vim curl ca-certificates \
   hyperfine \
-  asciinema
+  asciinema \
+  clang llvm musl-tools \
+  gcc-aarch64-linux-gnu libc6-dev-arm64-cross gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
+
+# Every target dev/check.sh lints (the C cross compilers above are for ring, in the registry
+# client's TLS).
+rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-gnu \
+  aarch64-unknown-linux-musl riscv64gc-unknown-linux-gnu
 
 # Demo GIF recorder (charmbracelet/vhs) needs ttyd + ffmpeg; install only if wanted:
 #   sudo apt-get install -y ffmpeg && go install github.com/charmbracelet/vhs@latest
@@ -31,5 +38,8 @@ cargo --version
 rustc --version
 rtk gain >/dev/null 2>&1 && echo "rtk ok" || echo "rtk missing or wrong package"
 claude --version || echo "claude CLI not found on PATH yet; open a new terminal"
+
+# Local OCI registry (CNCF distribution, pinned and checksum-verified) for cant push/pull tests.
+bash dev/registry.sh install || echo "registry install failed; retry: dev/registry.sh install"
 
 bash dev/check-kernel.sh || true

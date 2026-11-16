@@ -11,6 +11,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  # The registry client's TLS crypto (ring) has C and assembly: aarch64 musl has no packaged
+  # cross compiler, so clang builds it (see dev/check.sh and docs/ARCHITECTURE.md).
+  CC_aarch64_unknown_linux_musl: clang
+  AR_aarch64_unknown_linux_musl: llvm-ar
 
 jobs:
   lint:
@@ -46,7 +50,11 @@ jobs:
           uname -r
           cat /sys/kernel/security/lsm || true
           cargo run --quiet -p cantainer -- check || echo "::warning::kernel cannot sandbox cants; sandbox tests will skip"
+      - name: Local OCI registry for the push/pull tests
+        run: dev/registry.sh install && dev/registry.sh start
       - name: Sandbox integration tests
+        env:
+          CANT_TEST_REGISTRY: 127.0.0.1:5000
         run: cargo test -p cantainer --test sandbox -- --nocapture
 
   cross:
@@ -64,6 +72,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show && rustup target add ${{ matrix.target }}
+      - name: C cross compilers (for ring)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang llvm musl-tools \
+            gcc-aarch64-linux-gnu libc6-dev-arm64-cross gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
       - run: cargo clippy --workspace --all-targets --locked --target ${{ matrix.target }} -- -D warnings
 
   arm64:
@@ -72,10 +85,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show && rustup target add aarch64-unknown-linux-musl
-      - name: Install programs used by the demo tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep
+      - name: Install programs used by the demo tests, and musl-gcc (for ring)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim curl jq tree ripgrep musl-tools
       - run: cargo run --quiet --target aarch64-unknown-linux-musl -p cantainer -- check || true
+      - run: dev/registry.sh install && dev/registry.sh start
       - run: cargo test --workspace --locked --target aarch64-unknown-linux-musl
+        env:
+          CANT_TEST_REGISTRY: 127.0.0.1:5000
 
   macos:
     # Linux-only code is cfg-gated; the workspace must still build on macOS for editing.
@@ -95,6 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show && rustup target add x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - run: cargo build --release --locked --target x86_64-unknown-linux-musl -p cantainer
       - uses: actions/upload-artifact@v4
         with:

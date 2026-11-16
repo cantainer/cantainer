@@ -6,8 +6,17 @@
 # Targets whose standard library isn't installed are skipped with a note; add them with
 #   rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-gnu \
 #     aarch64-unknown-linux-musl riscv64gc-unknown-linux-gnu
+#
+# The TLS crypto of the registry client (ring) contains C and assembly, so every target needs a
+# C compiler for it (the dev container installs these; see docs/ARCHITECTURE.md):
+#   sudo apt-get install clang llvm musl-tools gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+#     gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# aarch64 musl has no packaged cross compiler; clang targets it (ring needs no libc headers).
+export CC_aarch64_unknown_linux_musl=${CC_aarch64_unknown_linux_musl:-clang}
+export AR_aarch64_unknown_linux_musl=${AR_aarch64_unknown_linux_musl:-llvm-ar}
 
 targets=(
   x86_64-unknown-linux-gnu

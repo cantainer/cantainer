@@ -11,3 +11,11 @@ Cantainer needs Linux to run (Landlock and seccomp). Two supported setups:
 
 `check-kernel.sh` reports whether the running kernel has what the sandbox needs. Once the code
 builds, `cargo run -p cantainer -- check` is the authoritative check.
+
+## Local OCI registry
+
+`dev/registry.sh install|start|stop|status` runs the CNCF `distribution` registry (pinned
+release, checksum-verified) on `127.0.0.1:5000`. The dev container installs it and starts it on
+every start, and sets `CANT_TEST_REGISTRY=127.0.0.1:5000`, which enables the push/pull
+integration test (`a_can_goes_through_a_registry`). CI does the same in the `sandbox` and
+`arm64` jobs.

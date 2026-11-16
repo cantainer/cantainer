@@ -80,6 +80,8 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup show && rustup target add "$TARGET"
+      # musl-gcc for the C and assembly in ring (the registry client's TLS crypto).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
       - run: cargo build --release --locked -p cantainer --target "$TARGET"
       - name: Static, runs, right version
         run: |
