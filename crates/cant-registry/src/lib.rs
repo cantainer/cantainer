@@ -12,19 +12,24 @@
 //!   or a file, and `oci-client`'s Docker Hub defaults (`grep` → `docker.io/library/grep`) never
 //!   apply.
 //!
+//! Pulling (which installs into the store) is Linux-only, like running cans.
+//!
 //! The registry client is async; this crate runs it on a single-threaded runtime of its own, so
 //! the rest of `cant` stays synchronous. TLS is rustls with the `ring` provider.
 
 #![forbid(unsafe_code)]
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
+#[cfg(target_os = "linux")]
+use cant_pack::layout::this_platform;
 use cant_pack::layout::{
     ARTIFACT_TYPE, Descriptor, INDEX_MEDIA_TYPE, ImageIndex, ImageManifest, MANIFEST_MEDIA_TYPE,
-    this_platform,
 };
-use cant_store::{Digest, FsStore};
+use cant_store::Digest;
+#[cfg(target_os = "linux")]
+use cant_store::FsStore;
 use oci_client::client::{ClientConfig, ClientProtocol};
 use oci_client::secrets::RegistryAuth;
 use oci_client::{Client, RegistryOperation};
@@ -32,6 +37,7 @@ use oci_client::{Client, RegistryOperation};
 pub use oci_client::Reference;
 
 /// Largest manifest or index accepted from a registry.
+#[cfg(target_os = "linux")]
 const MAX_MANIFEST: usize = 4 << 20;
 
 /// Errors talking to a registry or handling what it sent.
@@ -213,6 +219,7 @@ pub fn push(layout: &Path, reference: &Reference, auth: &RegistryAuth) -> Result
     })
 }
 
+#[cfg(target_os = "linux")]
 /// What [`pull`] did.
 #[derive(Debug)]
 pub struct Pulled {
@@ -223,6 +230,7 @@ pub struct Pulled {
     pub reused: usize,
 }
 
+#[cfg(target_os = "linux")]
 async fn manifest_at(
     client: &Client,
     reference: &Reference,
@@ -243,6 +251,7 @@ async fn manifest_at(
     Ok((bytes.to_vec(), digest))
 }
 
+#[cfg(target_os = "linux")]
 /// Pulls `reference` and installs it under the data directory `data` (`store/`, `cans/`).
 pub fn pull(reference: &Reference, data: &Path, auth: &RegistryAuth) -> Result<Pulled, Error> {
     let store =
@@ -265,10 +274,12 @@ pub fn pull(reference: &Reference, data: &Path, auth: &RegistryAuth) -> Result<P
     Ok(pulled)
 }
 
+#[cfg(target_os = "linux")]
 fn write(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     std::fs::write(path, bytes).map_err(|e| msg(format!("{}: {e}", path.display())))
 }
 
+#[cfg(target_os = "linux")]
 /// Downloads into a layout directory `staging`: the documents, and only the file blobs the
 /// store doesn't have.
 fn pull_into(
@@ -373,9 +384,10 @@ fn pull_into(
     })
 }
 
+#[cfg(target_os = "linux")]
 /// Where the installed can for `reference` is recorded:
 /// `refs/<registry>/<repository>/<tag or digest>`.
-fn ref_path(data: &Path, reference: &Reference) -> PathBuf {
+fn ref_path(data: &Path, reference: &Reference) -> std::path::PathBuf {
     let name = match (reference.digest(), reference.tag()) {
         (Some(d), _) => d.replace(':', "-"),
         (None, Some(t)) => format!("tag-{t}"),
@@ -387,6 +399,7 @@ fn ref_path(data: &Path, reference: &Reference) -> PathBuf {
         .join(name)
 }
 
+#[cfg(target_os = "linux")]
 fn record_ref(data: &Path, reference: &Reference, pulled: &Pulled) -> Result<(), Error> {
     let path = ref_path(data, reference);
     std::fs::create_dir_all(path.parent().expect("has parent"))
@@ -397,6 +410,7 @@ fn record_ref(data: &Path, reference: &Reference, pulled: &Pulled) -> Result<(),
     )
 }
 
+#[cfg(target_os = "linux")]
 /// The installed can a reference was pulled as, if it was pulled.
 pub fn installed(
     data: &Path,
@@ -452,6 +466,7 @@ mod tests {
         assert!(!is_local("ghcr.io"));
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn refs_stay_inside_the_data_directory() {
         let data = Path::new("/data");

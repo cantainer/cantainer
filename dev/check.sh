@@ -14,9 +14,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# aarch64 musl has no packaged cross compiler; clang targets it (ring needs no libc headers).
-export CC_aarch64_unknown_linux_musl=${CC_aarch64_unknown_linux_musl:-clang}
-export AR_aarch64_unknown_linux_musl=${AR_aarch64_unknown_linux_musl:-llvm-ar}
+# aarch64 musl has no packaged cross compiler; clang targets it from other hosts (ring needs no
+# libc headers). On an aarch64 host, musl-gcc is the native compiler.
+if [ "$(uname -m)" != aarch64 ]; then
+  export CC_aarch64_unknown_linux_musl=${CC_aarch64_unknown_linux_musl:-clang}
+  export AR_aarch64_unknown_linux_musl=${AR_aarch64_unknown_linux_musl:-llvm-ar}
+fi
 
 targets=(
   x86_64-unknown-linux-gnu

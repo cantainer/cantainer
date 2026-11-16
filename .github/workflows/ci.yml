@@ -11,10 +11,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  # The registry client's TLS crypto (ring) has C and assembly: aarch64 musl has no packaged
-  # cross compiler, so clang builds it (see dev/check.sh and docs/ARCHITECTURE.md).
-  CC_aarch64_unknown_linux_musl: clang
-  AR_aarch64_unknown_linux_musl: llvm-ar
 
 jobs:
   lint:
@@ -78,6 +74,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends clang llvm musl-tools \
             gcc-aarch64-linux-gnu libc6-dev-arm64-cross gcc-riscv64-linux-gnu libc6-dev-riscv64-cross
       - run: cargo clippy --workspace --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+        env:
+          # ring has C and assembly; aarch64 musl has no packaged cross compiler, so clang builds
+          # it (only when cross-compiling; native arm64 uses musl-gcc). See dev/check.sh.
+          CC_aarch64_unknown_linux_musl: clang
+          AR_aarch64_unknown_linux_musl: llvm-ar
 
   arm64:
     # The static aarch64 build that releases ship, tested natively, sandbox tests included.
