@@ -58,6 +58,25 @@ The long-term goal is a Linux system with no shared userland, where every comman
 
 ## Cans: tools that carry their permissions
 
+```
+   _____________________
+  (_____________________)
+  |                     |
+  |      grep 3.11      |
+  |  =================  |
+  |  program            |
+  |  + libc, ld.so      |
+  |  + manifest, SBOM   |
+  |                     |
+  |  MAY:               |
+  |   read   args only  |
+  |   net    no         |
+  |   ~/.ssh never      |
+  |  =================  |
+  |  sha256:71e5b8...   |
+  (_____________________)
+```
+
 A **can** is a cant you can hand to someone else. It holds one program, its libraries (libc and the
 ELF loader included), its manifest and an SBOM, packed as an OCI artifact. Push it to any OCI
 registry (GitHub's, Docker Hub, your own). Pull it on any Linux distribution of the same
