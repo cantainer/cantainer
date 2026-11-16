@@ -183,7 +183,8 @@ cant new <PROGRAM>      write a deny-everything manifest for a program to fill i
 cant completions <SHELL>  shell completions (packages install them, and man pages)
 cant list               cants you can run by name, and where each comes from
 cant check              does this kernel support sandboxing?
-cant verify [DIR]       report changes to .git/hooks, .git/config, .envrc, .vscode since the last check (--accept)
+cant verify [DIR]       unresolved changes by cants to files that run code later (exit 1 if any)
+cant diff|revert|keep <ID>  review, undo or accept such a change (`cant log` lists them)
 ```
 
 - `--explain` prints the effective policy (every granted path and why) and exits without running.
@@ -222,7 +223,7 @@ The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md).
 | `sed`, `jq` | the files you name, read-only (the script or filter isn't a file); no `sed -i` |
 | `grep`, `rg`, `find`, `ls`, `tree` | the current directory and the paths you name, read-only; `find` can't `-delete` or `-exec` |
 | `vim` | the files you name, read-write |
-| `git` | the current directory, read-write; no network. `cant verify` reports planted hooks and config |
+| `git` | the current directory, read-write; no network. changes to hooks and config are reported (`cant diff`, `cant revert`) |
 | `cargo` | the current directory (read; write everything but `.git`, `.envrc` and editor settings; run build scripts and tests), the Rust toolchain, `~/.cargo/registry` (read-only); no network |
 | `cargo-net` | the same, plus the network: use it for `cargo fetch` |
 | `agent-sh` | a shell for AI agents: the current directory, no network, the tools above (except `vim`, `curl`) as cants |

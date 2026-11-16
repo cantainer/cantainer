@@ -203,7 +203,7 @@ can only add access and a grant on `~` would expose everything inside it:
   `~/.zshrc`, …), `~/.config/fish`, `~/.config/autostart`, `~/.config/systemd`,
   `~/.config/environment.d`, `~/.gitconfig`, `~/.config/git`, `~/.local/bin`, `~/bin`,
   `~/.vimrc`, `~/.config/nvim`, `~/.cargo/config.toml`, and `~/.local/state/cantainer` (the
-  `cant verify` baselines). Writing any of them would run code outside the sandbox later or
+  records of what watched cants changed). Writing any of them would run code outside the sandbox later or
   hide that it happened.
 
 A grant that *contains* one of these is refused too. For example, the `git` example grants

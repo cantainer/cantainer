@@ -54,10 +54,12 @@ which Ubuntu 24.04 restricts for unprivileged users by default. They also add st
 complicate TTY and job control. Namespaces remain an option for features Landlock can't express,
 such as hiding paths entirely.
 
-### No supervisor: `cant` execs the program
+### No supervisor: `cant` execs the program (except for watched cants)
 
 `cant` restricts itself and calls `execve`. Nothing stays behind, so exit codes, signals,
-job control (`^Z`) and the terminal behave exactly as without `cant`.
+job control (`^Z`) and the terminal behave exactly as without `cant`. The one exception is a
+**watched** cant (one that may write the project directory), which runs under a supervisor; see
+"Project directories" below.
 
 *Consequence:* Landlock returns `EACCES` without telling an unprivileged process which path was
 refused, so `cant` can't print a branded message for denials that happen at runtime. Branded
@@ -227,7 +229,7 @@ Rejected:
 - **A supervisor that launches nested cants on request**: contradicts "no daemon, no
   supervisor" and adds an IPC surface.
 
-### Project directories: detect, don't prevent (`cant verify`)
+### Project directories: detect and report, don't prevent (sessions)
 
 A writable project directory lets a tool plant code that other programs run later with the
 user's full rights: `.git/config` (`core.fsmonitor`, `core.pager`, aliases), `.git/hooks`,
@@ -235,31 +237,50 @@ user's full rights: `.git/config` (`core.fsmonitor`, `core.pager`, aliases), `.g
 directory read-only, and git creates files inside `.git` (`index.lock`), so no Landlock rule can
 allow "git writes `.git` but not `.git/hooks`".
 
-Decision: `git` and `agent-sh` keep `fs.rw = ["$CWD"]` (agents must commit and create files),
-and `cant` **detects** changes. `src/watch.rs` records a baseline of the trigger files at the
-first top-level `cant run` in a directory (`~/.local/state/cantainer/watch/`, a protected
-path), compares at every later one, and prints a warning naming the code-running setting.
-`cant verify [--accept]` shows the diff. Harmless changes (remotes, branches, removals) are
-folded into the baseline silently; unknown settings are reported (fail-safe allowlist).
-Detection is after the fact, trust-on-first-use, and covers a fixed list of names; see
-SECURITY.md.
+Decision: `git` and `agent-sh` keep `fs.rw = ["$CWD"]` (agents must commit and create files).
+A cant is **watched** when its manifest, or a cant it may run, grants write access to the
+current directory, a parent of it, or anything inside it. Command-line files and `--grant`
+don't count; they are the user's own choice. The manifest can't opt out, so a can from a
+stranger can't either.
+
+A watched cant runs under a supervisor (`src/supervise.rs`): the `cant` the user started stays
+outside the sandbox, becomes a child subreaper, and starts `cant` again (same arguments, plus
+`CANT_SUPERVISED`), which restricts itself and execs as usual. No `fork` in Rust code and no
+`unsafe`. The child shares the supervisor's process group, so terminal signals and `^Z` reach it
+directly; `SIGTERM`, `SIGHUP` and `SIGUSR1/2` are forwarded (and `SIGINT`/`SIGQUIT` when stdin
+isn't a terminal). The exit status is passed through, and death by a signal is reproduced.
+Two seconds after the program exits, processes it left behind are killed and named.
+
+Around the run, `src/watch.rs` snapshots the watched files (contents compared byte for byte,
+plus mode and type; symlinks recorded, never followed) and `src/session.rs` records a session in
+`~/.local/state/cantainer/sessions/` (protected). A reportable change leaves the session open:
+`cant diff`, `cant revert` (refuses files changed again since, writes with
+`openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)` and rename), `cant keep`, `cant log`,
+`cant verify`. Every later top-level `cant run` in the directory reminds the user. A
+supervisor that dies before checking leaves a `running` marker; the next check finishes it.
+
+Costs, accepted: an extra `cant` process and exec for watched cants (unwatched cants are
+unchanged); no background processes survive a watched cant; detection has a window during the
+run; the watch list is fixed.
 
 Where untrusted code runs by design, prevention is used instead: `cargo` and `cargo-net` grant
 `$CWD/*` (each existing entry separately; `.git`, `.envrc`, `.vscode`, `.idea`, `.githooks`
-read-only), with `fs.ensure_dirs`/`ensure_files` creating `target/` and `Cargo.lock`. They can't
-create other entries in the project root.
+read-only), with `fs.ensure_dirs`/`ensure_files` creating `target/` and `Cargo.lock`.
 
-*Tried and replaced:* making git read-only on `.git` (shipped for one commit, `d4b8eaa`). It
-closed the escape for the known names, but agents couldn't commit or stage, which is the main
-thing they use git for.
+*Tried and replaced:* making git read-only on `.git` (`d4b8eaa`): agents couldn't commit. A
+per-directory baseline checked at the next `cant run` (`760dfff`): trust on first use, noise from
+the user's own edits, and the check came only at the next run.
 
 Rejected:
 
-- **Read-only bind mounts in a user namespace**: strongest and keeps commits, but brings
-  namespaces back (restricted on Ubuntu 24.04), startup cost and a fail-closed fallback. Revisit.
-- **A supervisor that watches while the cant runs**: contradicts "no supervisor".
-- **Documenting only**: the `.git` case is invisible to `git diff`, so reviewing a diff won't
-  catch it.
+- **Reverting automatically**: it would also revert the user's own edits made during the run
+  and legitimate git operations; the maintainer chose report-and-decide.
+- **Comparing inode, ctime and size only**: timestamps are coarse, so a same-size rewrite in the
+  same tick looks unchanged; the files are copied anyway, so comparing bytes is free.
+- **Waiting for every leftover process**: an agent's `npm run dev &` would hang the command.
+- **Letting the agent accept its own changes**: sessions are a protected path.
+- **Read-only bind mounts in a user namespace**: strongest, but needs user namespaces
+  (restricted on Ubuntu 24.04). Revisit with the network namespace work for cans.
 
 ### Manifest lookup
 

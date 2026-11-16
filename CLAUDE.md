@@ -151,9 +151,10 @@ SHA256SUMS. Lessons now enforced: CI `cross` + native `arm64` jobs, `dev/check.s
 requires green CI, `channels.yml` re-publishes the channels of an existing release.
 
 Phase 0 for cans (2026-11-16): more read-only protected paths, offline `cargo` registry read-only,
-`cargo`/`cargo-net` use `$CWD/*` + `fs.ensure_dirs/ensure_files`, and `cant verify` detects planted
-`.git`/`.envrc`/`.vscode` changes for `git` and `agent-sh` (they stay writable so agents can
-commit; decision in ARCHITECTURE.md).
+`cargo`/`cargo-net` use `$CWD/*` + `fs.ensure_dirs/ensure_files`. Watched cants (write access to
+the project dir: `git`, `cargo`, `agent-sh`) run under a supervisor that snapshots `.git/config`,
+hooks, `.envrc`, `.vscode` etc. before/after and opens a session (`cant diff/revert/keep/log/
+verify`); no auto-revert (maintainer's decision, 2026-11-16); leftovers killed after 2 s.
 Cans Phase 1 (design) written 2026-11-16: `docs/CANS.md`, `spec/can-format.md`; waiting for the
 maintainer's review (Decisions A-C in CANS.md section 0) before Phase 2. Do not start Phase 2 first.
 

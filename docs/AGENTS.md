@@ -52,9 +52,9 @@ Things to know:
   commit, which agents need, but it also lets it plant code that runs later with your full
   rights, outside any cant: `core.fsmonitor`, `core.pager` or an alias in `.git/config`, a hook
   in `.git/hooks`, an `.envrc`, a VS Code task. Landlock can't make those read-only inside a
-  writable directory, so `cant` **detects** it instead: the first `cant run` in a directory
-  records a baseline of those files, and later runs print a warning if they changed. See
-  [`cant verify`](#noticing-planted-files-cant-verify). It can't push: there's no network.
+  writable directory, so `cant` **detects** it instead and tells you, with a one-command
+  undo. See [Noticing planted files](#noticing-planted-files-sessions). It can't push: there's
+  no network.
 
 ## Wiring it into an agent
 
@@ -93,35 +93,58 @@ agent-sh for the commands you route through it.
 Running a whole agent (its own process, network access to its API, its config directory) inside
 a cant is not tested yet.
 
-## Noticing planted files: `cant verify`
+## Noticing planted files: sessions
+
+agent-sh (like any cant that may write the project directory, such as `git` and `cargo`) runs
+**watched**: `cant` records the files that run code outside the sandbox before the run, waits
+until the program and everything it started have finished, and compares. If something changed,
+it says so and opens a **session**:
 
 ```console
-$ cant run cat notes.txt
-cant: warning: files that can run code later changed here since you last checked:
+$ cant run agent-sh -c '…'
+…
+cant: agent-sh changed files that can run code outside the sandbox:
   changed: .git/config
     RUNS CODE: core.fsmonitor = /tmp/evil.sh
   new: .git/hooks/post-checkout
     RUNS CODE: git runs this hook (post-checkout)
-review them with `cant verify`, accept with `cant verify --accept`
-$ cant verify          # shows what changed (+/- lines); exits 1 if anything can run code
-$ cant verify --accept # you looked: make this the new baseline
+review: cant diff 7f3a2c    undo: cant revert 7f3a2c    accept: cant keep 7f3a2c
 ```
 
-What is watched, in the project directory: `.git/config`, `.git/hooks/*`, `.git` (if it is a file
-pointing elsewhere), `.envrc`, `.vscode/{tasks,settings,launch,extensions}.json`, `.githooks/*`
-and `.idea/runConfigurations/*`. The baseline is kept in `~/.local/state/cantainer/watch/`,
-which no cant can write.
+Nothing is undone automatically: you (or the agent, if you let it run `cant` outside agent-sh)
+decide.
 
-- Changes that can't run code are accepted silently: a new remote or branch in `.git/config`,
-  removed files. Anything else is reported, including settings `cant` doesn't recognise.
-- It **detects after the fact.** If the agent plants `core.fsmonitor` and a shell prompt or IDE
-  runs `git status` before you next run `cant`, the code has already run once. Run
-  `cant verify` after an agent session, or from your shell prompt, to shrink that window.
-- The first run in a directory trusts what is there (trust on first use). Your own edits show up
-  until you `--accept`.
+| Command | What it does |
+|---|---|
+| `cant diff ID` | The changed files, with `+`/`-` lines and what each change can run |
+| `cant revert ID` | Puts the files back as they were before the session. Refuses if they changed again since (`--force` overwrites); never follows symlinks |
+| `cant keep ID` | Accepts the changes |
+| `cant log [DIR]` | Sessions, newest first |
+| `cant verify [DIR]` | Lists unresolved sessions; exits 1 if there are any (for a shell prompt or CI) |
+
+Until you decide, every `cant run` in that directory starts with a one-line reminder. IDs are
+the first six digits of a random ID; four are enough when unique.
+
+What is watched, in the project directory and in subdirectories up to three levels deep
+(skipping `node_modules`, `target` and virtualenvs): `.git/config`, `.git/hooks/`, `.git` when it
+is a file pointing elsewhere, `.envrc`, `.pre-commit-config.yaml`, `.cargo/config(.toml)`,
+`.githooks/`, `.husky/`, `.vscode/` and `.idea/runConfigurations/`.
+
+- **Inside a cant, a session can't be read or accepted.** The copies live in
+  `~/.local/state/cantainer/sessions/`, a protected path (they may hold tokens from
+  `.git/config`). An agent can't `cant keep` its own change; `cant revert` and `cant keep` run
+  outside the sandbox.
+- **Processes left running** are given two seconds after the program exits, then stopped, so
+  nothing can change files after the check (`cant: stopped what agent-sh left running: npm`).
+  A watched cant can't leave a server running in the background.
+- **It is detection with a window, not prevention.** A shell prompt or IDE that runs
+  `git status` while the agent works can run a planted `core.fsmonitor` before the session ends.
+- Harmless changes aren't reported: new remotes or branches in `.git/config`, new repositories
+  (`git init`), git's sample hooks. Settings `cant` doesn't recognise are reported.
 - Other files that run later (`Makefile`, `package.json` scripts, `build.rs`, tests) aren't
-  watched: they change all the time. Review the diff before running them outside a cant.
-- Nested `cant` runs (inside agent-sh) never check or update the baseline.
+  watched; they change all the time. Review the diff before running them outside a cant.
+- If `cant` itself is killed during the run (on kernels before 6.12 the cant can signal it),
+  the next `cant run` or `cant verify` in that directory finishes the check.
 
 ## Giving the agent more, or less
 

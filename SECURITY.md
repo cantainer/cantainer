@@ -98,12 +98,16 @@ These are current gaps. Most are kernel limits, and some are planned work.
   filesystem control. Architectures other than x86_64, aarch64 and riscv64 are unsupported.
 - **Delayed execution is detected, not prevented, for `git` and `agent-sh`.** They can write
   `.git`, `.envrc` and `.vscode` in the project, so they can plant `core.fsmonitor`, a hook or
-  a task that runs later, outside any cant, with your rights. `cant run` warns when those files
-  changed since the last check and `cant verify` shows how, but: it is after the fact (a prompt
-  or IDE that runs `git status` may run the planted code before you run `cant` again); the first
-  run in a directory trusts what is there; only a fixed list of files is watched; and settings it
-  doesn't recognise are reported, not understood. `cargo` and `cargo-net` do prevent it for the
-  names above (`$CWD/*`), but not in nested directories. Review what an agent changed before
-  running a `Makefile`, `package.json` script, `build.rs` or test outside a cant.
+  a task that runs later, outside any cant, with your rights. Watched cants run under a
+  supervisor that compares those files before and after the run (including what detached
+  processes did, up to two seconds after exit, after which they are stopped) and reports a
+  session to review and revert. Nothing is reverted automatically. Limits: there is a window
+  (a prompt or IDE running `git status` during the run executes a planted `core.fsmonitor`);
+  only a fixed list of files is watched, three directory levels deep; a cant can kill the
+  supervisor on kernels before 6.12 (Landlock signal scoping), which postpones the check to the
+  next `cant run` or `cant verify` in that directory; and settings `cant` doesn't recognise are
+  reported, not understood. `cargo` and `cargo-net` prevent it for the top-level names
+  (`$CWD/*`). Review what an agent changed before running a `Makefile`, `package.json` script,
+  `build.rs` or test outside a cant.
 - **`CANT_POLICY` is informational.** A cant can forge it to change what a nested `cant` prints,
   but not what the kernel enforces.
