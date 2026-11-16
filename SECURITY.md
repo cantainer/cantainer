@@ -37,9 +37,11 @@ download you don't fully trust) from:
 
 ## Cans (in progress)
 
-`cant pack` and `cant run ./x.can` work for local cans. **Signatures and the approval prompt are
-not implemented yet**, so a local can runs with whatever its manifest says, like a manifest
-file you pass to `cant run`. Only run cans you made or trust. Installed cans live in
+`cant pack`, `cant run ./x.can`, `cant push` and `cant pull` work. **Signatures and the approval
+prompt are not implemented yet**, so a can runs with whatever its manifest says, like a manifest
+file you pass to `cant run`. A can from a registry runs only after you `cant pull` it yourself
+(`cant pull` says it is unsigned; check it with `cant inspect REF` first). Only run cans you
+made or trust. Registries other than `localhost` are reached over HTTPS only. Installed cans live in
 `~/.local/share/cantainer` (read-only for cants); a changed program or loader is refused when
 the can is opened, and blobs are checked against their digests when installed.
 

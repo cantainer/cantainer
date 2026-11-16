@@ -185,6 +185,8 @@ cant list               cants you can run by name, and where each comes from
 cant check              does this kernel support sandboxing?
 cant pack <CANT> [-o DIR]  make a can: the program, its libraries (libc and loader too) and an SBOM
 cant run ./NAME.can ...    run a can on its own libraries (experimental; unsigned, no approval yet)
+cant push DIR HOST/NAME:TAG  upload a can to an OCI registry (CANT_REGISTRY_USER/_TOKEN)
+cant pull HOST/NAME:TAG      download and install a can; then `cant run HOST/NAME:TAG ...`
 cant verify [DIR]       unresolved changes by cants to files that run code later (exit 1 if any)
 cant diff|revert|keep <ID>  review, undo or accept such a change (`cant log` lists them)
 ```

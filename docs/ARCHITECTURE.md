@@ -299,6 +299,22 @@ empty `/etc/cantainer/cants` for administrators.
 it could grant itself the network or more of the file system. Removed in 0.0.2; a path such as
 `cant run ./cants/x.toml` is still explicit.
 
+### TLS for registries: rustls with ring, and a C toolchain
+
+`cant push`/`pull` talk HTTPS to registries through `oci-client` (reqwest, rustls). rustls needs
+a crypto provider, and the mature ones contain C and assembly: `aws-lc-rs` (the default) and
+`ring`. We use **ring**: widely used and reviewed, and it builds with clang or the target's
+gcc without CMake. Consequence: the workspace is no longer pure Rust. Building for another
+target needs a C compiler for it: the cross GCC packages for aarch64/riscv64 glibc, `musl-gcc`
+for x86_64 musl and native aarch64 musl, clang for aarch64 musl from x86_64. CI, the release
+jobs and the dev container install them; `dev/check.sh` lists them.
+
+*Rejected:* `aws-lc-rs` (needs CMake and more toolchain for cross builds); a pure-Rust
+provider (`rustls-rustcrypto`), experimental and unaudited, not for security software; making
+the registry an optional feature, which leaves the shipped configuration unlinted on most
+targets. Also accepted: the release binary grows from 3.1 to 8.9 MB; startup of `cant run` is
+unchanged.
+
 ## Cans (design only)
 
 Redistributable, signed cants as OCI artifacts are designed in [CANS.md](CANS.md) and

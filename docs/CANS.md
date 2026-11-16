@@ -600,6 +600,17 @@ Where step 1 differs from the design above, and why:
 each distribution's cans on the other (`dev/can-smoke.sh`, jobs `cans-*`), with the same static
 `cant` everywhere and no host library granted.
 
+**Step 3, registry part (done, 2026-11-16):** `cant-registry` (`oci-client` 0.18.0 with rustls +
+`ring`, a single-threaded tokio runtime inside the crate). `cant push DIR REF` uploads only
+missing blobs, then manifests as their exact bytes, then the index under the tag. `cant pull
+REF` fetches the documents and only missing file blobs into a staging layout and installs it
+through the same verified path as a local can. `cant run REF` runs a can only if it was pulled
+(unsigned cans never run straight from a registry; maintainer's decision for the time before
+signatures). Tested against a local CNCF `distribution` registry (`dev/registry.sh`, in the dev
+container and CI). Costs: the `cant` binary grows from 3.1 to 8.9 MB (release, x86_64); startup
+of `cant run` is unchanged. Not yet: blob mounting across repositories, credentials from
+`~/.docker/config.json`. Next: GHCR through `cantainer/cans`.
+
 ## 14. Backlog
 
 - **Host allowlist enforcement** (Decision A): user + network namespace with a `CONNECT` proxy

@@ -1110,6 +1110,61 @@ fn git_as_a_can_works() {
     f.works(&[&can, "--version"], "git version");
 }
 
+/// The registry to push to and pull from, if the environment provides one (CI and the dev
+/// container start one with dev/registry.sh and set CANT_TEST_REGISTRY).
+fn test_registry() -> Option<String> {
+    let Ok(addr) = std::env::var("CANT_TEST_REGISTRY") else {
+        eprintln!("SKIP: CANT_TEST_REGISTRY not set (start one with dev/registry.sh)");
+        return None;
+    };
+    // Set but unreachable is a broken setup, not a skip.
+    std::net::TcpStream::connect(&addr)
+        .unwrap_or_else(|e| panic!("CANT_TEST_REGISTRY={addr} is set but unreachable: {e}"));
+    Some(addr)
+}
+
+#[test]
+fn a_can_goes_through_a_registry() {
+    if !library_ready(&["grep"]) {
+        return;
+    }
+    let Some(registry) = test_registry() else {
+        return;
+    };
+    let publisher = Fixture::new();
+    let can = pack(&publisher, "grep");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let reference = format!("{registry}/test-{unique}/grep:1");
+    let o = publisher.cant(&["push", &can, &reference]);
+    assert!(o.status.success(), "push: {}{}", stdout(&o), stderr(&o));
+    let o = publisher.cant(&["push", &can, &reference]);
+    assert!(stdout(&o).contains("0 blobs uploaded"), "{}", stdout(&o));
+
+    // Someone else, with an empty store.
+    let user = Fixture::new();
+    let o = user.cant(&["run", &reference, "hello", "notes.txt"]);
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("cant pull"),
+        "unsigned cans run only once pulled: {}",
+        stderr(&o)
+    );
+    let o = user.cant(&["pull", &reference]);
+    assert!(o.status.success(), "pull: {}{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("NOT signed"), "{}", stdout(&o));
+    user.works(&[&reference, "hello", "notes.txt"], "hello\n");
+    // Protected paths still apply.
+    let o = user.cant(&["run", &reference, "KEY", "../.ssh/id_rsa"]);
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+
+    // Pulling again only fetches the small documents.
+    let o = user.cant(&["pull", &reference]);
+    assert!(stdout(&o).contains("3 blobs downloaded"), "{}", stdout(&o));
+}
+
 // ---- cargo -----------------------------------------------------------------------------------
 
 /// The built-in cargo manifest, with `~/.cargo` and `~/.rustup` pointing at this machine's

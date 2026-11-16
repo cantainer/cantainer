@@ -23,6 +23,7 @@ path = "src/main.rs"
 cant-launch.workspace = true
 cant-manifest.workspace = true
 cant-pack.workspace = true
+cant-registry.workspace = true
 cant-policy.workspace = true
 cant-store.workspace = true
 clap.workspace = true

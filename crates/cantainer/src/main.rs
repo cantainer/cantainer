@@ -63,6 +63,20 @@ enum Command {
         #[arg(short = 'o', long = "output")]
         output: Option<PathBuf>,
     },
+    /// Push a can (a directory made by `cant pack`) to a registry:
+    /// `cant push grep.can ghcr.io/you/grep:3.11`. Credentials: CANT_REGISTRY_USER and
+    /// CANT_REGISTRY_TOKEN
+    Push {
+        /// The can's directory
+        can: PathBuf,
+        /// Where to push it: HOST/NAME:TAG
+        reference: String,
+    },
+    /// Download a can from a registry and install it, so `cant run REFERENCE` can run it
+    Pull {
+        /// HOST/NAME:TAG or HOST/NAME@sha256:...
+        reference: String,
+    },
     /// Show a cant's manifest, binary, digest and capabilities
     Inspect {
         /// Cant name or path to a manifest
@@ -193,6 +207,8 @@ fn main() -> ExitCode {
         Command::Run(args) => run(args, &mut out),
         Command::Inspect { cant } => inspect(&cant, &mut out),
         Command::Pack { cant, output } => pack(&cant, output, &mut out),
+        Command::Push { can, reference } => push(&can, &reference, &mut out),
+        Command::Pull { reference } => pull(&reference, &mut out),
         Command::Show { cant } => show(&cant, &mut out),
         Command::List => list(&mut out),
         Command::New { program, force } => new(&program, force, &mut out),
@@ -284,15 +300,25 @@ fn can_layout(name: &str) -> Option<PathBuf> {
         .then(|| path.to_path_buf())
 }
 
-/// Installs (or finds) the can in `layout` and returns its manifest, root and how to start it.
+/// Installs (or finds) the can in a layout directory, or the pulled can for a registry
+/// reference, and returns its manifest, root and how to start it.
 #[cfg(target_os = "linux")]
-fn open_can(
-    layout: &Path,
-    home: &Path,
-) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
-    let shown = layout.display().to_string();
-    let can = cant_pack::install::install(layout, &data_dir(home))
-        .map_err(|e| Failure::new(format!("{shown} can't be used: {e}")))?;
+fn open_can(name: &str, home: &Path) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
+    let can = if cant_registry::is_reference(name) {
+        let reference = cant_registry::parse(name).map_err(|e| Failure::new(e.to_string()))?;
+        // Until cans are signed, nothing from a registry runs unless the user pulled it.
+        cant_registry::installed(&data_dir(home), &reference)
+            .map_err(|e| Failure::new(format!("{name} can't be used: {e}")))?
+            .ok_or_else(|| {
+                Failure::new(format!(
+                    "{name} isn't pulled; cans from registries aren't signed yet, so pull it \
+                     yourself first: cant pull {name}"
+                ))
+            })?
+    } else {
+        cant_pack::install::install(Path::new(name), &data_dir(home))
+            .map_err(|e| Failure::new(format!("{name} can't be used: {e}")))?
+    };
     let text = std::fs::read_to_string(can.dir.join("config.toml"))
         .map_err(|e| Failure::new(format!("{}: {e}", can.dir.display())))?;
     let start = cant_launch::CanStart {
@@ -311,7 +337,7 @@ fn open_can(
             .collect(),
     };
     let found = Found {
-        source: catalog::Source::Can(layout.to_path_buf(), can.digest.to_string()),
+        source: catalog::Source::Can(PathBuf::from(name), can.digest.to_string()),
         text,
         manifest: can.manifest,
     };
@@ -319,10 +345,7 @@ fn open_can(
 }
 
 #[cfg(not(target_os = "linux"))]
-fn open_can(
-    _layout: &Path,
-    _home: &Path,
-) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
+fn open_can(_name: &str, _home: &Path) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
     Err(Failure::new("cans run on Linux only"))
 }
 
@@ -332,13 +355,12 @@ fn prepare(
     grants: &[UserGrant],
 ) -> Result<(Found, Context, Plan, Vec<cant_policy::Skipped>), Failure> {
     let mut ctx = context()?;
-    let (found, can_start) = match can_layout(name) {
-        Some(layout) => {
-            let (found, root, start) = open_can(&layout, &ctx.home)?;
-            ctx = ctx.with_can(root);
-            (found, Some(start))
-        }
-        None => (locate(name)?, None),
+    let (found, can_start) = if can_layout(name).is_some() || cant_registry::is_reference(name) {
+        let (found, root, start) = open_can(name, &ctx.home)?;
+        ctx = ctx.with_can(root);
+        (found, Some(start))
+    } else {
+        (locate(name)?, None)
     };
     let mut built = cant_policy::build(&found.manifest, &ctx, args, grants)?;
     compose::include_cants(
@@ -620,6 +642,60 @@ fn pack(name: &str, output: Option<PathBuf>, out: &mut String) -> Result<ExitCod
         packed.dir.display()
     );
     Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(target_os = "linux")]
+fn push(can: &Path, reference: &str, out: &mut String) -> Result<ExitCode, Failure> {
+    let r = cant_registry::parse(reference).map_err(|e| Failure::new(e.to_string()))?;
+    let pushed = cant_registry::push(can, &r, &cant_registry::credentials())
+        .map_err(|e| Failure::new(format!("can't push {} to {reference}: {e}", can.display())))?;
+    outln!(
+        out,
+        "pushed {} to {reference} ({}): {} blobs uploaded, {} already there",
+        can.display(),
+        pushed.digest,
+        pushed.uploaded,
+        pushed.skipped
+    );
+    outln!(
+        out,
+        "note: not signed (signatures are the next step for cans)"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(target_os = "linux")]
+fn pull(reference: &str, out: &mut String) -> Result<ExitCode, Failure> {
+    let r = cant_registry::parse(reference).map_err(|e| Failure::new(e.to_string()))?;
+    let home = canonical_home()?;
+    let pulled = cant_registry::pull(&r, &data_dir(&home), &cant_registry::credentials())
+        .map_err(|e| Failure::new(format!("can't pull {reference}: {e}")))?;
+    let m = &pulled.can.manifest;
+    outln!(
+        out,
+        "pulled {} {} from {reference} ({}): {} blobs downloaded, {} already here",
+        m.name,
+        m.version,
+        pulled.digest,
+        pulled.downloaded,
+        pulled.reused
+    );
+    outln!(
+        out,
+        "warning: this can is NOT signed; it runs with what its manifest declares. \
+         Check it first: cant inspect {reference}"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn push(_can: &Path, _reference: &str, _out: &mut String) -> Result<ExitCode, Failure> {
+    Err(Failure::new("cans can be pushed on Linux only"))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pull(_reference: &str, _out: &mut String) -> Result<ExitCode, Failure> {
+    Err(Failure::new("cans can be pulled on Linux only"))
 }
 
 #[cfg(not(target_os = "linux"))]
