@@ -37,7 +37,7 @@ pub const SECRET_HOME_PATHS: &[&str] = &[
     ".zsh_history",
 ];
 
-/// Home-relative paths that may be read but not written: they would let a cant
+/// Home-relative paths that may be read and executed but not written: they would let a cant
 /// change its own (or another cant's) rights, or run code outside any sandbox later.
 pub const READ_ONLY_HOME_PATHS: &[&str] = &[
     ".config/cantainer",
@@ -51,6 +51,16 @@ pub const READ_ONLY_HOME_PATHS: &[&str] = &[
     ".config/fish",
     ".config/autostart",
     ".config/systemd",
+    // Read by git, editors, shells and the session on every run: a write here is code
+    // execution outside any sandbox later.
+    ".gitconfig",
+    ".config/git",
+    ".local/bin",
+    "bin",
+    ".vimrc",
+    ".config/nvim",
+    ".cargo/config.toml",
+    ".config/environment.d",
 ];
 
 /// One protected path and the most access any implicit grant may have there.
@@ -86,7 +96,7 @@ impl Protected {
         let mut paths = Vec::new();
         for (list, max) in [
             (SECRET_HOME_PATHS, Access::NONE),
-            (READ_ONLY_HOME_PATHS, Access::R),
+            (READ_ONLY_HOME_PATHS, Access::RX),
         ] {
             for rel in list {
                 let literal = home.join(rel);
@@ -168,6 +178,32 @@ mod tests {
             p.check(Path::new("/nonexistent-home/.bashrc"), Access::RW)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn persistence_points_are_read_only() {
+        let p = protected();
+        for rel in [
+            ".gitconfig",
+            ".config/git/config",
+            ".local/bin/tool",
+            "bin/tool",
+            ".vimrc",
+            ".config/nvim/init.lua",
+            ".cargo/config.toml",
+            ".config/environment.d/10-x.conf",
+        ] {
+            let path = Path::new("/nonexistent-home").join(rel);
+            assert!(p.check(&path, Access::R).is_none(), "{rel} readable");
+            assert!(p.check(&path, Access::RW).is_some(), "{rel} not writable");
+        }
+    }
+
+    #[test]
+    fn git_credentials_stay_secret_under_read_only_git_config() {
+        let p = protected();
+        let path = Path::new("/nonexistent-home/.config/git/credentials");
+        assert!(p.check(path, Access::R).is_some());
     }
 
     #[test]

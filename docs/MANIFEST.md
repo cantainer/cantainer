@@ -184,7 +184,10 @@ can only add access and a grant on `~` would expose everything inside it:
   `~/.password-store`, `~/.local/share/keyrings`, `~/.pki`, `~/.mozilla`, browser profiles,
   `~/.cargo/credentials(.toml)`, `~/.npmrc`, `~/.pypirc`, `~/.gem/credentials`, shell histories.
 - **Read-only:** `~/.config/cantainer`, shell startup files (`~/.bashrc`, `~/.profile`,
-  `~/.zshrc`, …), `~/.config/fish`, `~/.config/autostart`, `~/.config/systemd`.
+  `~/.zshrc`, …), `~/.config/fish`, `~/.config/autostart`, `~/.config/systemd`,
+  `~/.config/environment.d`, `~/.gitconfig`, `~/.config/git`, `~/.local/bin`, `~/bin`,
+  `~/.vimrc`, `~/.config/nvim`, `~/.cargo/config.toml`. Writing any of them would run code
+  outside the sandbox later.
 
 A grant that *contains* one of these is refused too. For example, the `git` example grants
 `$CWD`, so running it from your home directory is refused. To reach a protected path deliberately,
