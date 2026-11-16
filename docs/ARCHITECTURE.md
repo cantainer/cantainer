@@ -6,14 +6,19 @@ rejected. Update it when a decision changes.
 ## Crates
 
 ```
-cantainer      `cant` binary: argument parsing, manifest lookup, output. Thin.
+cantainer      `cant` binary: argument parsing, manifest lookup, output; watched cants
+               (watch.rs: snapshots, session.rs: cant diff/revert/keep/log/verify,
+               supervise.rs: the supervisor).
   ├─ cant-manifest   TOML types and strict validation. No I/O except reading the file.
   ├─ cant-policy     What is allowed: access model, powerbox, protected paths, attenuation,
   │                  building a Policy from manifest + command line. Pure logic plus path
   │                  canonicalization; fully unit-tested, portable.
-  ├─ cant-launch     How it is enforced: ELF library resolution, Landlock, seccomp, exec.
-  │                  Linux-only internals behind cfg; stub errors elsewhere.
-  └─ cant-store      Content digests (used by `inspect`) and the future store interface.
+  ├─ cant-launch     How it is enforced: ELF library resolution, Landlock, seccomp, exec
+  │                  (and a can's start through its own loader). Linux-only internals.
+  ├─ cant-store      Content digests and FsStore, the verified content-addressed store.
+  ├─ cant-pack       Cans: the tree format and its validation, the OCI layout, packing,
+  │                  installing into the store.
+  └─ cant-registry   Cans through OCI registries: push, pull (oci-client, rustls + ring).
 ```
 
 The split keeps the security decisions (`cant-policy`) separate from the kernel mechanics
@@ -342,4 +347,8 @@ in CANS.md section 11:
 | Landlock | `crates/cant-launch/src/linux/landlock.rs` |
 | seccomp | `crates/cant-launch/src/linux/seccomp.rs` |
 | Plan and exec | `crates/cant-launch/src/linux/mod.rs` |
+| Watched cants: snapshots, sessions, supervisor | `crates/cantainer/src/{watch,session,supervise}.rs` |
+| Content-addressed store | `crates/cant-store/src/fs.rs` |
+| Can format, packing, installing | `crates/cant-pack/src/{tree,layout,pack,install}.rs` |
+| Push and pull | `crates/cant-registry/src/lib.rs` |
 | CLI | `crates/cantainer/src/main.rs` |

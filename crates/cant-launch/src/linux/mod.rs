@@ -141,7 +141,8 @@ pub fn plan(
     args.extend(user_args.iter().cloned());
 
     // A dynamically linked can runs as `<loader> --library-path … --argv0 NAME PROGRAM ARGS`.
-    let mut program = built.program_canonical;
+    let entrypoint = built.program_canonical;
+    let mut program = entrypoint.clone();
     if let Some(CanStart {
         loader: Some(loader),
         library_path,
@@ -165,6 +166,7 @@ pub fn plan(
     Ok(Plan {
         cant: manifest.name.clone(),
         program,
+        entrypoint,
         argv0,
         args,
         env,

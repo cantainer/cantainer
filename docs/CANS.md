@@ -611,6 +611,13 @@ container and CI). Costs: the `cant` binary grows from 3.1 to 8.9 MB (release, x
 of `cant run` is unchanged. Not yet: blob mounting across repositories, credentials from
 `~/.docker/config.json`. Next: GHCR through `cantainer/cans`.
 
+**Step 3, GHCR (done, 2026-11-16):** [cantainer/cans](https://github.com/cantainer/cans)'s `pack`
+workflow builds `cant`, packs `grep` and `git` on an Ubuntu 24.04 runner, pushes them to
+`ghcr.io/cantainer/grep:3.11` and `ghcr.io/cantainer/git:2.56.1` with the workflow's
+`GITHUB_TOKEN`, and pulls them back into an empty store. The packages are **private** (linked
+to `cantainer/cans`) until step 4 (signing) and §8 (sources) are done. Pulling them from
+elsewhere works with a token; anonymous pulls are refused.
+
 ## 14. Backlog
 
 - **Host allowlist enforcement** (Decision A): user + network namespace with a `CONNECT` proxy

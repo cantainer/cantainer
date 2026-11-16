@@ -8,6 +8,14 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+### Changed
+- `cant inspect` on a can shows the can's program and its digest, and the bundled loader on a
+  line of its own (it used to show the loader as the binary).
+
+### Documentation
+- [docs/USING-CANS.md](docs/USING-CANS.md): a guide to cans. The README, AGENTS, VISION,
+  ARCHITECTURE and CONTRIBUTING describe cans and watched cants.
+
 ## [0.0.4] - 2026-11-16
 
 ### Security

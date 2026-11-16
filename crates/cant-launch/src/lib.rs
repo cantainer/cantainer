@@ -88,6 +88,9 @@ pub struct Plan {
     pub cant: String,
     /// Canonical path of the executable.
     pub program: PathBuf,
+    /// The program the cant is about: `program` itself, except for a can, where `program` is
+    /// the can's bundled loader and this is the program it starts.
+    pub entrypoint: PathBuf,
     /// `argv[0]` (the program's name as found, e.g. `vim` for `/usr/bin/vim.basic`).
     pub argv0: OsString,
     /// Arguments after `argv[0]`: the manifest's fixed arguments, then the user's.

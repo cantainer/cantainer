@@ -59,7 +59,9 @@ crates/
   cant-manifest/           # Cantfile / manifest types + validation
   cant-launch/             # sandbox setup + exec (Landlock, seccomp, namespaces)
   cant-policy/             # capability model, attenuation, powerbox arg grants
-  cant-store/              # stub: content-addressed store interface (later composefs)
+  cant-store/              # content digests + FsStore (verified content-addressed store)
+  cant-pack/               # cans: format, packing, installing
+  cant-registry/           # cans: push/pull through OCI registries
 crates/cantainer/cants/    # built-in manifests (were examples/ until 0.0.2)
 docs/                      # VISION.md, ARCHITECTURE.md, MANIFEST.md
 dev/                       # lima.yaml, scripts
@@ -173,14 +175,15 @@ CI: check the run after every push (`gh run list`); it was red unnoticed after d
    `cant-pack` and `cant-registry` were first published by the `publish-new-crates` workflow
    with a `CRATES_TOKEN` repository secret. Still to do by the maintainer: Trusted Publishing for
    `cant-pack` and `cant-registry` on crates.io, then delete the `CRATES_TOKEN` secret.
-2. **Codespace access to `cantainer/cans`:** devcontainer.json now requests it; the maintainer
-   rebuilds the codespace and approves. Then copy `dev/cans-repo/` (pack workflow + README)
-   into `cantainer/cans` and push.
-3. **Finish cans step 3 (GHCR):** run the `pack` workflow in `cantainer/cans` by hand; check
-   that `ghcr.io/cantainer/grep` and `ghcr.io/cantainer/git` exist and are **private**; pull and
-   run one from here with a token (`CANT_REGISTRY_USER`/`CANT_REGISTRY_TOKEN`). Packages stay
-   private until steps 4 and 6 below are done (maintainer's decision, 2026-11-16: GPL/LGPL
-   binaries need their sources published with them).
+2. **Done 2026-11-16:** `cantainer/cans` has the pack workflow (`dev/cans-repo/` removed). The codespace token can't write other repositories (Codespaces grants repository
+   permissions only when a codespace is *created*); the maintainer logged `gh` in with their
+   own account: use `env -u GITHUB_TOKEN gh …`, and for git pushes to other repos
+   `env -u GITHUB_TOKEN git -c credential.helper= -c credential.helper='!gh auth git-credential' push`.
+   Prebuilds are unavailable: the org is on the Free plan (a prebuilt devcontainer image on
+   GHCR is the alternative, not decided).
+3. **Done 2026-11-16:** GHCR. `ghcr.io/cantainer/grep:3.11` and `git:2.56.1`, **private**,
+   linked to `cantainer/cans`; pulled and run from here with a token. Packages stay private
+   until steps 4 and 6 are done (maintainer's decision: GPL/LGPL binaries need their sources).
 4. **Cans step 4: signing and approval.** Propose a plan first. Sigstore keyless signing in the
    `cantainer/cans` workflow (signer identity = that workflow); verification in `cant` with
    `sigstore-verify` 0.16 (verify crate versions again); bundles as OCI referrers, with the tag

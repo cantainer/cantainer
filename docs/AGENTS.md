@@ -2,8 +2,13 @@
 
 An agent that runs shell commands runs them with all your rights: it can read `~/.ssh`, push to
 your remotes, and send anything to the network. Prompt injection, a confused model, or a
-malicious dependency's build script is all it takes. Cantainer's answer is a shell for the
-agent that is itself a cant: **`agent-sh`**.
+malicious dependency's build script is all it takes. Cantainer's answers:
+
+- **`agent-sh`**, a shell for the agent that is itself a cant (this page);
+- **watched cants**, which report when an agent changes files that run code later, with a
+  one-command undo ([below](#noticing-planted-files-sessions));
+- **cans**, tools that carry their permissions, so an agent can be allowed to install tools
+  within limits you set (experimental, [below](#tools-for-agents-as-cans)).
 
 ```sh
 cd ~/src/myproject
@@ -164,6 +169,43 @@ cant show agent-sh > ~/.config/cantainer/cants/agent-sh.toml
   `fs.rw`.
 
 `cant run --explain agent-sh -c true` shows every grant and which cant it came from.
+
+## Tools for agents, as cans
+
+Agents install tools for themselves. MCP servers are the clearest case: today they come from
+`npx` or `uvx`, unsigned, and run with all your rights. A **can**
+([USING-CANS.md](USING-CANS.md)) is a tool packed with its libraries and its manifest, so what
+it may do is written on it and enforced by the kernel wherever it runs.
+
+**Today (experimental):** you can pack a tool, push it to a registry, pull it on another machine
+and run it there under its manifest. Cans are not signed yet, so a can from a registry runs only
+after *you* `cant pull` it. An agent can't install one by itself. Running a can inside agent-sh
+isn't supported yet.
+
+**Planned** ([CANS.md](CANS.md) §5 and §7):
+
+- **Signed cans and an approval prompt.** The first run shows the label in plain language ("git
+  2.47, signed by github.com/acme, wants: read and write the current directory; no network").
+  An update that asks for more shows only the difference. The prompt reads the terminal, never
+  stdin, so a tool's input stream can't answer it.
+- **`--approve-if-within POLICY.toml`**, the feature for agents. A can is approved automatically
+  only if everything it asks for fits a policy you wrote (paths, network, environment variables,
+  trusted signers). Nothing outside the policy runs without you. Protected paths stay
+  unreachable, whatever a can or a policy says.
+- **MCP servers as cans**, starting with static Go servers, with configuration snippets for
+  Claude Code and other clients:
+
+  ```json
+  { "mcpServers": { "github": {
+      "command": "cant",
+      "args": ["run", "ghcr.io/cantainer/github-mcp-server:VERSION", "stdio"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PAT}" }
+  } } }
+  ```
+
+  (Illustrative: this can doesn't exist yet.) A can's network access is all-or-nothing for now:
+  Landlock can limit ports but not hosts, so "only `api.github.com`" needs a network namespace
+  with a proxy, which is on the backlog.
 
 ## Limits
 

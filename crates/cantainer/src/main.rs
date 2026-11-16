@@ -584,8 +584,8 @@ fn print_explain(
 fn inspect(name: &str, out: &mut String) -> Result<ExitCode, Failure> {
     let (found, ctx, plan, skipped) = prepare(name, &[], &[])?;
     let text = found.text;
-    let digest = cant_store::Digest::of_file(&plan.program)
-        .map_err(|e| Failure::new(format!("{}: {e}", plan.program.display())))?;
+    let digest = cant_store::Digest::of_file(&plan.entrypoint)
+        .map_err(|e| Failure::new(format!("{}: {e}", plan.entrypoint.display())))?;
     outln!(out, "manifest: {}", found.source);
     outln!(out, "---");
     out.push_str(&text);
@@ -593,8 +593,15 @@ fn inspect(name: &str, out: &mut String) -> Result<ExitCode, Failure> {
         outln!(out);
     }
     outln!(out, "---");
-    outln!(out, "binary:       {}", plan.program.display());
+    outln!(out, "binary:       {}", plan.entrypoint.display());
     outln!(out, "digest:       {digest}");
+    if plan.program != plan.entrypoint {
+        outln!(
+            out,
+            "loader:       {} (the can's own)",
+            plan.program.display()
+        );
+    }
     outln!(out, "capabilities (without command-line files):");
     print_policy(out, &ctx, &plan.effective);
     for s in skipped {

@@ -16,6 +16,10 @@ startup, and need no root.
 
 There is no cantainerd. No daemon. You cant.
 
+**New: cans.** A cant can now be packed into a **can**: the program, its libraries and the
+permissions it runs with, as one OCI artifact you push to any registry and run on any Linux
+distribution. See [Cans](#cans-tools-that-carry-their-permissions). Experimental.
+
 ```console
 $ cant run cat ~/.ssh/id_rsa
 cant: cat can't read ~/.ssh/id_rsa (~/.ssh is protected); to allow it anyway: cant run --grant ~/.ssh/id_rsa:r cat ...
@@ -51,6 +55,37 @@ network, and runs `git`, `cargo`, `rg` and friends as cants. See [docs/AGENTS.md
 
 The long-term goal is a Linux system with no shared userland, where every command is a cant. See
 [docs/VISION.md](docs/VISION.md).
+
+## Cans: tools that carry their permissions
+
+A **can** is a cant you can hand to someone else. It holds one program, its libraries (libc and the
+ELF loader included), its manifest and an SBOM, packed as an OCI artifact. Push it to any OCI
+registry (GitHub's, Docker Hub, your own). Pull it on any Linux distribution of the same
+architecture, and it runs on its own libraries, with the same permissions enforced by the kernel.
+
+```console
+$ cant pack grep                                 # grep + libraries + manifest + SBOM
+packed grep 0.1.0 into grep.can: 5 files, 3.4 MB, manifest sha256:e67f76…
+$ cant push grep.can ghcr.io/you/grep:3.11
+$ cant pull ghcr.io/you/grep:3.11                # elsewhere: Ubuntu, Fedora, …
+$ cant run ghcr.io/you/grep:3.11 TODO notes.txt
+```
+
+Distributing command-line tools is mostly a solved problem. What cans add is that **what a tool
+may do travels with it**: a machine-readable label that the kernel enforces. A person, an agent
+or a company policy can read it before the tool runs. The first target is AI agents and the
+tools they install for themselves, starting with MCP servers, which today run unsigned with all
+your rights.
+
+| | |
+|---|---|
+| **Works today** (0.0.4, experimental) | `cant pack`, running local cans, `cant push`/`cant pull` with any OCI registry, per-file deduplication (libc is stored and downloaded once), an SBOM per can. CI packs cans on Ubuntu 26.04 and runs them on Fedora 42, and the reverse. |
+| **Next** | Sigstore signatures with the publisher's identity; a plain-language approval prompt on first run, showing only the difference when an update asks for more; `--approve-if-within POLICY`, so agents can install tools within limits you set; `cant audit` for known vulnerabilities; MCP servers as cans; sources for GPL programs. |
+| **Not yet** | Cans aren't signed, so a can from a registry runs only after you `cant pull` it yourself. The official cans at `ghcr.io/cantainer` are private until they're signed. |
+
+[docs/USING-CANS.md](docs/USING-CANS.md) is the guide, and [docs/CANS.md](docs/CANS.md) the
+design. The format is an open specification versioned on its own, so other runtimes and agent
+vendors can adopt it: [spec/can-format.md](spec/can-format.md).
 
 ## Install
 
@@ -176,24 +211,30 @@ a host kernel with Landlock. OrbStack, Docker Desktop and Lima all qualify on ma
 ## Usage
 
 ```
-cant run [--explain] [--grant PATH[:ACCESS]]... <CANT> [ARGS]...
-cant inspect <CANT>     manifest, resolved binary, sha256 digest, capabilities
-cant show <CANT>        print the manifest (to copy and customize)
-cant new <PROGRAM>      write a deny-everything manifest for a program to fill in
-cant completions <SHELL>  shell completions (packages install them, and man pages)
-cant list               cants you can run by name, and where each comes from
-cant check              does this kernel support sandboxing?
-cant pack <CANT> [-o DIR]  make a can: the program, its libraries (libc and loader too) and an SBOM
-cant run ./NAME.can ...    run a can on its own libraries (experimental; unsigned, no approval yet)
-cant push DIR HOST/NAME:TAG  upload a can to an OCI registry (CANT_REGISTRY_USER/_TOKEN)
-cant pull HOST/NAME:TAG      download and install a can; then `cant run HOST/NAME:TAG ...`
-cant verify [DIR]       unresolved changes by cants to files that run code later (exit 1 if any)
-cant diff|revert|keep <ID>  review, undo or accept such a change (`cant log` lists them)
+Running
+  cant run [--explain] [--grant PATH[:ACCESS]]... <CANT> [ARGS]...
+  cant inspect <CANT>         manifest, program, sha256 digest, capabilities
+  cant show <CANT>            print the manifest (to copy and customize)
+  cant new <PROGRAM>          write a deny-everything manifest for a program to fill in
+  cant list                   cants you can run by name, and where each comes from
+  cant check                  does this kernel support sandboxing?
+  cant completions <SHELL>    shell completions (packages install them, and man pages)
+
+Cans (experimental, unsigned)
+  cant pack <CANT> [-o DIR]   the program, its libraries (libc and loader too), manifest, SBOM
+  cant push DIR HOST/NAME:TAG upload a can to an OCI registry (CANT_REGISTRY_USER/_TOKEN)
+  cant pull HOST/NAME:TAG     download and install a can
+
+What watched cants changed
+  cant verify [DIR]           unresolved changes to files that run code later (exit 1 if any)
+  cant diff|revert|keep <ID>  review, undo or accept a change
+  cant log [DIR]              sessions with changes
 ```
 
 - `--explain` prints the effective policy (every granted path and why) and exits without running.
 - `--grant PATH[:r|rw|rx|rwx]` adds a grant. It is the only way to reach a protected path.
-- `CANT` is a name or a path to a manifest.
+- `CANT` is a name, a path to a manifest, a can directory (`./grep.can`) or a pulled can
+  (`ghcr.io/you/grep:3.11`).
 - `cant` exits with 125 when it refuses or fails. Otherwise the exit status is the program's own.
 
 A manifest declares what a cant may do. Here is the built-in `cat` (`cant show cat`):
@@ -256,8 +297,16 @@ manifest's paths and the files named on the command line. Then `cant`:
 3. `exec`s the program.
 
 No process stays behind, so exit codes, signals, job control and the terminal behave exactly as
-without `cant`. The details and the rejected alternatives are in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+without `cant`. There is one exception. Cants that may write the project directory (`git`,
+`cargo`, `agent-sh`) are **watched**: `cant` stays as a small supervisor, compares the files that
+other tools later run code from (git hooks, `.git/config`, `.envrc`, `.vscode`) before and after
+the run, and reports any change with a session ID you can `cant diff` or `cant revert`. Exit
+codes and signals still pass through. See [docs/AGENTS.md](docs/AGENTS.md#noticing-planted-files-sessions).
+
+A **can** runs through its own bundled loader, with `--library-path` pointing at its own libraries,
+so nothing from the host's libraries is used or granted.
+
+The details and the rejected alternatives are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Startup overhead
 
@@ -274,6 +323,11 @@ Azure VM (Intel Xeon Platinum 8370C, Linux 6.8). It covers manifest parsing, lib
 building the Landlock and seccomp rules, and the extra `execve`. Run the script on your own
 machine; the numbers vary with hardware and kernel.
 
+Watched cants cost more, because `cant` plans the launch twice (supervisor and child) and
+snapshots the project's hooks and config before and after. On the same machine on 2026-11-16,
+`cant run git status` took about 8 ms and `cant run agent-sh -c true` about 12 ms (release build,
+mean of 50 runs).
+
 ## Demo recording
 
 `demo/demo.tape` renders the demo above as a GIF with [vhs](https://github.com/charmbracelet/vhs):
@@ -288,15 +342,15 @@ The GIF isn't committed yet.
 
 These tools solve different problems, and several are excellent at theirs.
 
-| | Unit | Isolation | Needs | Programs |
-|---|---|---|---|---|
-| **Cantainer** | one executable | Landlock + seccomp, per-file grants from the command line | Linux ≥ 6.2, no root, no daemon | unmodified native binaries |
-| **Docker / OCI containers** | a whole environment (image) | namespaces, cgroups, seccomp | a daemon (or rootless setup), images | anything in the image |
-| **Flatpak** | a desktop application | bubblewrap namespaces, portals | runtimes, app packaging | apps built for Flatpak |
-| **bubblewrap** | whatever you configure | namespaces, bind mounts, seccomp | unprivileged user namespaces (or setuid) | unmodified native binaries |
-| **Nix** | a package and its closure | none at runtime (build sandbox only) | the Nix store | packages built with Nix |
-| **pkgx** | a tool and its dependencies | none at runtime | the pkgx runtime | packaged tools |
-| **WASI** | a WebAssembly module | capability-based by construction | a Wasm runtime | programs recompiled to Wasm |
+| | Unit | Isolation | Needs | Programs | Distribution |
+|---|---|---|---|---|---|
+| **Cantainer** | one executable | Landlock + seccomp, per-file grants from the command line | Linux ≥ 6.2, no root, no daemon | unmodified native binaries | cans in OCI registries, one blob per file, permissions attached (experimental) |
+| **Docker / OCI containers** | a whole environment (image) | namespaces, cgroups, seccomp | a daemon (or rootless setup), images | anything in the image | images in OCI registries, tar layers |
+| **Flatpak** | a desktop application | bubblewrap namespaces, portals | runtimes, app packaging | apps built for Flatpak | OSTree repositories (Flathub) |
+| **bubblewrap** | whatever you configure | namespaces, bind mounts, seccomp | unprivileged user namespaces (or setuid) | unmodified native binaries | none |
+| **Nix** | a package and its closure | none at runtime (build sandbox only) | the Nix store | packages built with Nix | binary caches |
+| **pkgx** | a tool and its dependencies | none at runtime | the pkgx runtime | packaged tools | pkgx's package servers |
+| **WASI** | a WebAssembly module | capability-based by construction | a Wasm runtime | programs recompiled to Wasm | varies (OCI artifacts possible) |
 
 Honest differences:
 
@@ -308,8 +362,13 @@ Honest differences:
 - **bubblewrap** is a flexible, mature low-level sandbox. Cantainer is narrower: a declarative
   manifest, the powerbox, protected paths and attenuation, without user namespaces. bubblewrap can
   hide paths entirely, which Landlock can't (a cant can still `stat` paths it can't open).
-- **Nix** and **pkgx** solve distribution and dependency closure, which Cantainer plans to address
-  with OCI and a content-addressed store. Neither sandboxes programs at runtime.
+- **Nix** and **pkgx** are mature at distribution and dependency closure. Cans (experimental)
+  also ship a program with its closure, but per executable, with its permissions attached, and as
+  plain OCI artifacts. Unlike Nix, they don't rebuild or relocate anything; unlike either, they
+  aren't a package manager. Neither Nix nor pkgx sandboxes programs at runtime.
+- **Docker images** and cans both live in OCI registries. An image is an environment made of tar
+  layers. A can is one executable plus the files it needs, stored one blob per file, so shared
+  files such as libc are stored and downloaded once.
 - **WASI** offers stronger, cleaner capability semantics, but programs must be compiled for it.
   Cantainer runs the binaries you already have, so it inherits Linux's larger attack surface.
 
@@ -321,10 +380,14 @@ crates/cantainer/cants built-in manifests
 crates/cant-manifest   manifest types and validation
 crates/cant-policy     capability model, powerbox, protected paths, attenuation
 crates/cant-launch     ELF resolution, Landlock, seccomp, exec
-crates/cant-store      content digests; future content-addressed store
-docs/                  VISION, ARCHITECTURE, MANIFEST, AGENTS, RELEASING
+crates/cant-store      content digests and the verified content-addressed store
+crates/cant-pack       cans: format, packing, installing
+crates/cant-registry   cans: push and pull through OCI registries
+docs/                  VISION, ARCHITECTURE, MANIFEST, AGENTS, USING-CANS, CANS, RELEASING
+spec/can-format.md     the open can format specification
 benches/startup.sh     startup benchmark
-dev/                   Lima VM config, kernel check, release script
+dev/                   Lima VM config, kernel check, release script, local OCI registry,
+                       cross-distribution can test
 packaging/             release tarball, .deb/.rpm, APT/RPM repos, Homebrew, AUR; signing key
 demo/demo.tape         README demo recording
 ```

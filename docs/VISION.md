@@ -32,17 +32,24 @@ It has to be useful on its own before an OS makes sense.
 
 ## Roadmap
 
-Milestone 0 (this repository today): manifests, policy, the Landlock + seccomp launcher, `cant run`,
-`cant inspect`, `--explain`, attenuation, and benchmarks.
+Done:
 
-Planned, roughly in order. None of this exists yet:
+- **Milestone 0:** manifests, policy, the Landlock + seccomp launcher, `cant run`,
+  `cant inspect`, `--explain`, attenuation, and benchmarks.
+- **Built-in cants and agent-sh** (0.0.2–0.0.3), **watched cants** that report changes to
+  files that run code later (0.0.4).
+- **Cans, experimental** (0.0.4): redistributable cants as OCI artifacts. `cant pack`, `cant push`
+  and `cant pull` work with any OCI registry, and a **content-addressed store** keeps each file
+  once, checked when it's stored ([USING-CANS.md](USING-CANS.md), [CANS.md](CANS.md),
+  [spec/can-format.md](../spec/can-format.md)).
 
-- **OCI registry pull and push.** Distribute cants (manifest + files) through any OCI registry,
-  addressed by digest. Designed as **cans** in [CANS.md](CANS.md) and
-  [spec/can-format.md](../spec/can-format.md); next release line (0.1.0).
-- **Content-addressed store.** Per-file storage under `cant-store`, later backed by **composefs**
-  with **fs-verity**, so files are deduplicated across cants and verified by the kernel on read.
-- **Signing.** Sigstore signatures on cant manifests, checked at pull and at run time.
+Planned, roughly in order:
+
+- **Signing and approval** (next, toward 0.1.0). Sigstore signatures on cans, checked at pull and
+  at run time; a first-run approval prompt; `--approve-if-within POLICY` for agents.
+- **MCP servers as cans**, `cant audit`, and published sources for the GPL programs in public
+  cans (0.1.0).
+- **composefs and fs-verity** behind the store, so the kernel verifies files on read.
 - **Cached sandboxes.** Precomputed library closures and rulesets keyed by digest, to cut startup
   overhead further.
 - **Shell integration.** A shell (or shell plugin) that runs commands as cants and applies the

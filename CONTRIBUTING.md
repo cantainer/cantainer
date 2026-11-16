@@ -20,6 +20,17 @@ cargo run -p cantainer -- check    # can this kernel sandbox cants?
 cargo test --workspace             # unit + integration tests
 ```
 
+The dev container also installs what the full checks need, and you can install it yourself
+elsewhere:
+
+- **C compilers for every target.** The registry client's TLS uses `ring`, which contains C and
+  assembly: `clang llvm musl-tools gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+  gcc-riscv64-linux-gnu libc6-dev-riscv64-cross` on Debian/Ubuntu (see `dev/check.sh`).
+- **A local OCI registry** for the push/pull test: `dev/registry.sh install && dev/registry.sh
+  start`, then `export CANT_TEST_REGISTRY=127.0.0.1:5000`. Without it, that test is skipped.
+- **Cross-distribution cans:** `dev/can-smoke.sh pack DIR` and `dev/can-smoke.sh run DIR` pack
+  cans on one machine and run them on another (CI does Ubuntu ⇄ Fedora).
+
 ## Before you open a pull request
 
 ```sh
@@ -29,7 +40,8 @@ dev/check.sh        # fmt check, clippy for every supported target, tests: what 
 
 `dev/check.sh` checks x86_64 and aarch64 (glibc and musl) and riscv64; it says which targets it
 skipped because their standard library isn't installed. CI runs the same checks, the sandbox
-tests on x86_64 and natively on arm64, and a macOS build.
+tests on x86_64 and natively on arm64 (both with a local registry), cans packed on Ubuntu and
+run on Fedora and the reverse, and a macOS build. After pushing, check that CI is green.
 
 ## Rules of the road
 
@@ -41,6 +53,8 @@ tests on x86_64 and natively on arm64, and a macOS build.
   should, and an entry in `docs/ARCHITECTURE.md` explaining the decision and the alternatives.
 - When a kernel or library limitation forces a design change, say so in the PR. Don't work around
   it quietly.
+- Changes to the can format go into [spec/can-format.md](spec/can-format.md) first, which is
+  versioned separately from the code.
 - Error messages are part of the interface. Keep the voice: `cant: vim can't write ~/.ssh/config (…)`.
 - Keep commits small and logical, with clear messages.
 - Add a line to `CHANGELOG.md` under `## [Unreleased]` for anything users notice: features,
