@@ -66,6 +66,11 @@ cargo publish --locked -p cant-pack        # each new crate, in the order of rel
 cargo publish --locked -p cant-registry
 ```
 
+Or, without a local token: put a token (scope `publish-new`, limited to the new crates,
+short expiry) into the repository secret `CRATES_TOKEN` and run the **publish-new-crates**
+workflow (Actions → publish-new-crates → Run workflow, with the tag). Delete the secret
+afterwards.
+
 On crates.io, open each new crate → Settings → Trusted Publishing, add GitHub
 `cantainer/cantainer`, workflow `release.yml`, environment `release`, and revoke the token if
 it was made for this. Then **Re-run failed jobs**: the workflow skips what is published and

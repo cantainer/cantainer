@@ -1,0 +1,57 @@
+name: publish-new-crates
+
+# First publish of workspace crates that have never been on crates.io. crates.io allows Trusted
+# Publishing only for crates that exist, so their first version needs a token: the CRATES_TOKEN
+# secret (scoped to the new crates, short-lived; delete it afterwards). Then add Trusted
+# Publishing for each crate and re-run the failed release job. See docs/RELEASING.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish from
+        required: true
+        default: v0.0.4
+      crates:
+        description: New crates, in dependency order
+        required: true
+        default: cant-pack cant-registry
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          CRATES: ${{ inputs.crates }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::bad tag $TAG"; exit 1; }
+          for c in $CRATES; do
+            [[ "$c" =~ ^cant-[a-z]+$ ]] || { echo "::error::bad crate name $c"; exit 1; }
+          done
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - run: rustup show
+      - name: Publish
+        env:
+          TAG: ${{ inputs.tag }}
+          CRATES: ${{ inputs.crates }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
+        run: |
+          [ -n "$CARGO_REGISTRY_TOKEN" ] || { echo "::error::the CRATES_TOKEN secret is not set"; exit 1; }
+          version="${TAG#v}"
+          ua='cantainer-release (https://github.com/cantainer/cantainer)'
+          for c in $CRATES; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' -A "$ua" "https://crates.io/api/v1/crates/$c/$version")"
+            if [ "$status" = 200 ]; then
+              echo "$c $version is already on crates.io"
+              continue
+            fi
+            cargo publish --locked -p "$c"
+          done
