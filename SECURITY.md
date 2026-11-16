@@ -35,7 +35,13 @@ download you don't fully trust) from:
 - **You, at launch.** Files you name on the command line are granted. That is the design.
 - **`cant` itself and the files it reads before restricting itself.**
 
-## Cans (planned, not implemented)
+## Cans (in progress)
+
+`cant pack` and `cant run ./x.can` work for local cans. **Signatures and the approval prompt are
+not implemented yet**, so a local can runs with whatever its manifest says, like a manifest
+file you pass to `cant run`. Only run cans you made or trust. Installed cans live in
+`~/.local/share/cantainer` (read-only for cants); a changed program or loader is refused when
+the can is opened, and blobs are checked against their digests when installed.
 
 [docs/CANS.md](docs/CANS.md) designs redistributable, signed cans. Their threats, and what the
 design does about each, are in its section 10. In short:

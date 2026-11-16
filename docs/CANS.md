@@ -212,6 +212,14 @@ else from the store, and the usual runtime base. It then restricts itself and `e
   program with `mmap` doesn't (ARCHITECTURE.md, "Libraries"). The existing SECURITY.md caveat that
   the loader runs any readable ELF file applies to cans, but the can has only its own `root/`.
 
+- **Bundled helpers the program executes** (found while building step 1). When the can's program
+  `exec`s another ELF file from the can (git's `git-remote-https`, for example), the kernel
+  starts that file's *own* `PT_INTERP`, the host's loader path, which then looks for the host's
+  libraries. Neither is granted, so the helper fails closed ("Permission denied"). Programs
+  whose work happens in one binary (most git commands are built in; Go MCP servers are static)
+  are unaffected. The fix is the same as for `/proc/self/exe`: v2 mounts, or a rewritten
+  `PT_INTERP`.
+
 **v2 (design only): opt-in mounts.** For programs that need files at their usual paths, or a true
 `/proc/self/exe`, `cant` creates a user and mount namespace, bind-mounts the can's `root/`
 (read-only) over `/usr`, `/lib`, `/lib64` and the data paths in the *can's own view* and runs the
@@ -338,7 +346,7 @@ Allow? [y/N]
 
 | Command | What it does |
 |---|---|
-| `cant pack PROGRAM [-o FILE] [--manifest M]` | Build a can from an installed program and a manifest: resolve the closure, `[pack]` data, SBOM, tree; write an OCI layout to `FILE` (`git.can`, an OCI image-layout tar for transport), or just install into the store. |
+| `cant pack CANT [-o DIR]` | Build a can from a cant (name or manifest path): the program, its closure, `[pack]` data, SBOM, tree; written as an OCI image-layout **directory** (`git.can/`). |
 | `cant push FILE-or-REF REF` | Push blobs (skipping those the registry has, `mount_blob` across repositories), then the manifests, the index and, if given, the signature. Checks the licensing rules in §8. |
 | `cant pull REF` | Resolve the platform manifest, verify the signature against policy, fetch missing blobs, install into the store, **don't run, don't approve**. |
 | `cant run REF [args…]` | `pull` if needed, check approval, then launch (§3). `REF` is a name, a `./x.can` path, a registry reference or a `@sha256:` digest. Existing manifest names and paths work as before. |
@@ -559,6 +567,29 @@ Phase 2.
 7. The demo tape, README, CHANGELOG, version 0.1.0.
 
 Fuzzing the tree/archive reader and a size/startup benchmark join step 1 and step 3.
+
+## Status
+
+**Step 1 (done, 2026-11-16):** `cant-store` (`FsStore`), manifest version 2 (`$CAN`, `[pack]`),
+the `cant-pack` crate (tree and its validation, OCI layout, packer, installer), `cant pack` and
+`cant run ./x.can`. Tested with `cat`, `head` and `git` (`git status`, `git log`), including
+shared libc/loader objects in the store and refusal of a changed installed program.
+
+Where step 1 differs from the design above, and why:
+
+- **A `.can` is an OCI layout directory, not a tar.** Reading a tar safely is extra parser surface,
+  and registries are the transport. A tar wrapper can come later if people need single files.
+- **The OCI types are written out in `cant-pack`** (descriptor, manifest, index; ~100 lines)
+  rather than taken from `oci-spec`, so `cant run` stays free of that dependency until the
+  registry step, which may switch to it with `oci-client`.
+- **The SBOM is written directly as CycloneDX 1.6 JSON** (packages from `dpkg-query`/`rpm`, files
+  with SHA-256), without the `cyclonedx-bom` crate. **Licenses aren't filled in yet** (§8 work).
+- **Store objects are mode 0555**: one object is hard-linked into every can that has it, hard
+  links share a mode, and some objects are programs. The tree's 0644/0755 is recorded but not
+  applied.
+- **Local cans run without signature or approval** until step 4. Only run `.can` directories you
+  made or trust.
+- **Known limitation found:** bundled helpers the program executes use the host's loader (§3).
 
 ## 14. Backlog
 

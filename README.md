@@ -183,6 +183,8 @@ cant new <PROGRAM>      write a deny-everything manifest for a program to fill i
 cant completions <SHELL>  shell completions (packages install them, and man pages)
 cant list               cants you can run by name, and where each comes from
 cant check              does this kernel support sandboxing?
+cant pack <CANT> [-o DIR]  make a can: the program, its libraries (libc and loader too) and an SBOM
+cant run ./NAME.can ...    run a can on its own libraries (experimental; unsigned, no approval yet)
 cant verify [DIR]       unresolved changes by cants to files that run code later (exit 1 if any)
 cant diff|revert|keep <ID>  review, undo or accept such a change (`cant log` lists them)
 ```

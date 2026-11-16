@@ -158,9 +158,15 @@ verify`); no auto-revert (maintainer's decision, 2026-11-16); leftovers killed a
 Cans Phase 1 (design) written 2026-11-16: `docs/CANS.md`, `spec/can-format.md`. Decisions A-C
 made 2026-11-16 (CANS.md section 0): host allowlist backlogged (field kept, shown as unrestricted
 network); Go MCP servers first, per-package bundles, base cans backlogged; `/proc/self/exe`
-documented in v1. Phase 2 follows CANS.md section 13; propose each step's plan before building.
+documented in v1. Phase 2 follows CANS.md section 13; propose each step's plan before building. Step 1 done
+2026-11-16 (store, manifest v2, `cant-pack`, `cant pack`, `cant run ./x.can`; deviations in
+CANS.md "Status"). The maintainer created `cantainer/cans` (empty) for pack manifests and the
+signing CI; GHCR pushes come with step 3.
 
 Open items:
+- `git config` (and anything else that writes `.git/config`) fails in the `git` cant: git
+  `chmod`s `config.lock` by path, which the seccomp baseline blocks unless `chmod_by_path`.
+  Decide: give the git cant `chmod_by_path`, or document.
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
   secrets (Trusted Publishing worked for 0.0.3).
 - Not yet verified by hand: `dnf install cantainer` from the RPM repo, `brew install
