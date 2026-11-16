@@ -8,6 +8,8 @@ Security-relevant changes are listed under **Security**.
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-16
+
 ### Security
 - More home paths are read-only for every cant, because writing them runs code outside the
   sandbox later: `~/.gitconfig`, `~/.config/git`, `~/.local/bin`, `~/bin`, `~/.vimrc`,
@@ -138,6 +140,7 @@ First release.
   path-based metadata changes, `TIOCSTI`, x32 syscalls, and sockets the policy doesn't allow.
 - Refuses to run on kernels below Landlock ABI 3.
 
-[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/cantainer/cantainer/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/cantainer/cantainer/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/cantainer/cantainer/compare/v0.0.1...v0.0.3
 [0.0.1]: https://github.com/cantainer/cantainer/releases/tag/v0.0.1
