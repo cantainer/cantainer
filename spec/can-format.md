@@ -163,14 +163,20 @@ A runtime MUST reject the whole can if any of these is violated:
 
 ### 4.3 Bundles
 
-Many small files make a large manifest. A packer MAY store files smaller than 64 KiB in
-**bundles**: blobs with media type `application/vnd.cantainer.can.bundle.v1` that are the plain
-concatenation of file contents, with no header or padding. A file entry then carries
-`"bundle": {"digest", "offset", "length"}` in addition to its own `digest` and `size`
+Many small files make a large manifest and many requests. A packer MAY store files smaller
+than 64 KiB in **bundles**: blobs with media type `application/vnd.cantainer.can.bundle.v1` that
+are the plain concatenation of file contents, with no header or padding. A file entry then
+carries `"bundle": {"digest", "offset", "length"}` in addition to its own `digest` and `size`
 (`length` MUST equal `size`). A runtime reads the byte range from the bundle and MUST verify the
-file's `digest` after extraction. Bundles are meant for trees such as `node_modules`; ELF
-files and anything over 64 KiB SHOULD stay individual blobs so that they deduplicate across
-cans. A packer SHOULD use bundles only when a can would otherwise exceed about 5,000 files.
+file's `digest` after extraction.
+
+**One bundle per package.** A packer SHOULD make one bundle per package version (an npm or PyPI
+package as listed in the SBOM), containing that package's small files in byte-wise ascending
+order of their path *relative to the package root*, so that the same package version produces
+the same bundle, with the same digest, in every can. Files that belong to no package MAY be
+grouped by directory in the same way. ELF files and anything over 64 KiB SHOULD stay individual
+blobs so that they deduplicate across cans. A packer SHOULD use bundles only for trees with many
+small files (`node_modules`, `site-packages`).
 
 ### 4.4 The root
 
@@ -240,7 +246,8 @@ In particular, for `capabilities.network = { allow = [...] }`:
   api.github.com".
 - If it cannot, it MUST either refuse to run the can, or show and record the capability as
   **unrestricted network** ("this system cannot limit the can to api.github.com") and apply
-  every policy and approval to that stronger capability.
+  every policy and approval to that stronger capability. (The reference runtime does the
+  latter until it has host enforcement.)
 
 The same applies to any future field. Reading `network = false`, `fs.*`, `exec` and `env.pass`
 requires only the kernel features the reference runtime already requires.

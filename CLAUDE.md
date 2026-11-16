@@ -155,8 +155,10 @@ Phase 0 for cans (2026-11-16): more read-only protected paths, offline `cargo` r
 the project dir: `git`, `cargo`, `agent-sh`) run under a supervisor that snapshots `.git/config`,
 hooks, `.envrc`, `.vscode` etc. before/after and opens a session (`cant diff/revert/keep/log/
 verify`); no auto-revert (maintainer's decision, 2026-11-16); leftovers killed after 2 s.
-Cans Phase 1 (design) written 2026-11-16: `docs/CANS.md`, `spec/can-format.md`; waiting for the
-maintainer's review (Decisions A-C in CANS.md section 0) before Phase 2. Do not start Phase 2 first.
+Cans Phase 1 (design) written 2026-11-16: `docs/CANS.md`, `spec/can-format.md`. Decisions A-C
+made 2026-11-16 (CANS.md section 0): host allowlist backlogged (field kept, shown as unrestricted
+network); Go MCP servers first, per-package bundles, base cans backlogged; `/proc/self/exe`
+documented in v1. Phase 2 follows CANS.md section 13; propose each step's plan before building.
 
 Open items:
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`

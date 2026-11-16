@@ -7,7 +7,7 @@ A **can** is a redistributable cant: one executable, its dependency closure and 
 packed as a signed OCI artifact. `cant pack git` makes one, `cant run ghcr.io/acme/git:2.47
 status` runs one.
 
-## 0. Positioning, and three things to decide
+## 0. Positioning, and three decisions
 
 Cans are **signed tools with permission labels, built for agents**. They are not "Docker for
 binaries" and not another package manager. Getting a binary onto a machine is a solved problem.
@@ -17,8 +17,16 @@ that a person, an agent or a company policy can read *before* the tool runs.
 The first target is MCP servers: today an agent installs them with `npx`/`uvx`, unsigned, and they
 run with the user's full rights.
 
-Research for this document turned up three findings that change the plan. They need your
-decision at review.
+Research for this document turned up three findings that changed the plan. The maintainer
+decided them on 2026-11-16:
+
+| | Decision |
+|---|---|
+| **A** Host allowlist | **Backlog.** 0.1.0 has no host enforcement. The `network = { allow = [...] }` field stays in the spec, and `cant` shows, records and approves it as **unrestricted network** until enforcement exists ([spec §8](../spec/can-format.md#8-honest-labels)). The netns + proxy design in §7.3 waits in the backlog. |
+| **B** MCP servers | **Go servers first** (static binaries), then one Node server, then Python as time allows. Node and Python trees use **per-package bundles** ([spec §4.3](../spec/can-format.md#43-bundles)), so a package version shared by several servers is one blob. Shared base cans (a signed `node-22` can that servers build on) are backlogged. |
+| **C** `/proc/self/exe` | **Document in v1, fix in v2** with mount namespaces. |
+
+The analysis behind each decision follows.
 
 ### Decision A: the host allowlist cannot be enforced with Landlock and seccomp
 
@@ -50,10 +58,8 @@ Options:
    policies treat it as such. The MCP demo then shows what is enforced: `~/.ssh` denied, no other
    file access, network `any host` stated plainly. No dishonest label, no namespaces yet.
 
-**Recommendation:** option 2 for 0.1.0, option 1 as the first item of 0.2.0. The demo claim
-becomes "can't read `~/.ssh`, can't touch your files, and its network access is on the label",
-which is true. Say no if you want "only `api.github.com`" in 0.1.0; it moves the namespace work
-to the front and needs a spike on Ubuntu 24.04 first.
+**Decided: option 2; option 1 goes to the backlog.** The demo claim becomes "can't read
+`~/.ssh`, can't touch your files, and its network access is on the label", which is true.
 
 ### Decision B: Node and Python servers are heavier than the example suggests
 
@@ -62,17 +68,34 @@ The reference servers (`@modelcontextprotocol/server-*`, `mcp-server-git`, `mcp-
 are Node or Python. Packing those means bundling the interpreter's closure *and* a tree with
 thousands of small files (`node_modules`, `site-packages`) plus native extensions found only by
 `dlopen`. The format handles it (bundles, `[pack] elf_roots`), but the packer is more work and the
-cans are tens of megabytes. Proposed order for 0.1.0: Go servers first, then one Node server,
-then Python, as time allows. The brief asks for 3-5 servers; I would count the Go ones first.
+cans are tens of megabytes.
+
+**Decided:** Go servers first, then one Node server, then Python as time allows.
+
+**Do layers help?** Partly, for a different problem than they seem to. The *runtime* (`node`,
+`python3`, libc, libstdc++, OpenSSL) needs no layers: with one blob per file, every can that
+bundles the same `node` binary shares that blob, which dedupes better than a Docker base layer
+(that only dedupes when images share the exact layer). The *thousands of small files* in
+`node_modules`/`site-packages` are where grouping matters: one blob per file would mean
+thousands of requests and a manifest near the 4 MB limit. So files are grouped, but **per
+package**: one bundle per npm/PyPI package version (`lodash@4.17.21`), files in a fixed order,
+so its bytes and digest are identical in every can that uses that version. A typical Node
+server becomes a few hundred blobs, deduped across servers at package granularity. Package
+boundaries come from the same metadata the SBOM uses.
+
+*Backlog:* **shared base cans** (`[pack] base = "ghcr.io/…/node:22@sha256:…"`, like
+`FROM node:22`). The runtime would be packed, signed and audited once, but cans would depend on
+cans, and approval would involve two signers. Per-file dedup already gives most of the storage
+benefit.
 
 ### Decision C: `/proc/self/exe` points at the loader
 
 A can runs as `ld-linux … program`, so `readlink /proc/self/exe` is the loader, not the program.
 Programs that re-run themselves (`process.execPath` in Node, some Go programs that re-exec) can
 break. §3 describes the fix (v2, user namespaces); v1 documents it and flags such cans at pack
-time when it can detect the pattern. Say if you would rather ship a patched-interpreter variant
-first (a per-user copy of the program with `PT_INTERP` rewritten); it costs one extra file per
-can and a `patchelf`-style rewriter.
+time when it can detect the pattern. **Decided:** document in v1, fix in v2. *Not chosen:* a
+patched-interpreter variant (a per-user copy of the program with `PT_INTERP` rewritten), which
+costs one extra file per can and a `patchelf`-style rewriter.
 
 ## 1. Artifact layout
 
@@ -400,7 +423,7 @@ See Decision A. If we do build it (option 1), the minimum is:
 
 This is a bounded spike on Ubuntu 24.04 (userns policy) and Fedora before committing to it.
 
-### 7.4 What the demo can honestly show with option 2
+### 7.4 What the demo honestly shows (Decision A)
 
 `npx` server: reads `~/.ssh/id_rsa`. The same server as a can: the read fails, writes anywhere but
 its arguments fail, and `cant inspect` states "network: any host (host limits not enforced on this
@@ -531,7 +554,18 @@ Phase 2.
 3. `cant-registry`: `push`/`pull` against a `registry:2` container in CI, then GHCR (asking first).
 4. Signing verification (and `push --sign` if clean), approval store, prompt, `--approve-if-within`.
 5. `cant inspect`, `cant gc`, `cant audit`.
-6. Pack 3-5 MCP servers as cans (Go first), `docs/MCP.md`.
+6. Pack 3-5 MCP servers as cans: Go first, then one Node server (per-package bundles), then
+   Python if time allows. `docs/MCP.md`.
 7. The demo tape, README, CHANGELOG, version 0.1.0.
 
 Fuzzing the tree/archive reader and a size/startup benchmark join step 1 and step 3.
+
+## 14. Backlog
+
+- **Host allowlist enforcement** (Decision A): user + network namespace with a `CONNECT` proxy
+  sidecar, §7.3. Shares machinery with the v2 mount namespaces.
+- **Mount-namespace launch** (v2, §3): files at their usual paths, a true `/proc/self/exe`
+  (Decision C).
+- **Shared base cans** (Decision B).
+- **composefs / fs-verity store** (§2).
+- **`cant search`** catalog (§6).
