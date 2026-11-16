@@ -1,5 +1,7 @@
 # Cantainer
 
+![Cantainer. By default, you can't. Run native executables in lightweight, locked-down capsules with explicitly declared permissions: cant run cat notes.txt reaches notes.txt, and nothing in /etc, /home, /proc, /sys or the network.](misc/banner.png)
+
 [![CI](https://github.com/cantainer/cantainer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cantainer/cantainer/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/cantainer.svg)](https://crates.io/crates/cantainer)
 [![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/cantainer.svg)](#license)
