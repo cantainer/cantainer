@@ -7,6 +7,8 @@
 mod catalog;
 mod compose;
 mod scaffold;
+mod session;
+mod supervise;
 mod watch;
 
 use std::ffi::OsString;
@@ -73,14 +75,34 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Report changes to files that run code later (`.git/hooks`, `.git/config`, `.envrc`,
-    /// `.vscode`) since the last check, e.g. after an agent worked in the directory
+    /// List unresolved changes that cants made to files that run code outside the sandbox
+    /// (`.git/hooks`, `.git/config`, `.envrc`, `.vscode`, ...); exits 1 if there are any
     Verify {
         /// Directory to check (default: the current directory)
         dir: Option<PathBuf>,
-        /// Record the current state as the new baseline after reporting
+    },
+    /// Show what a session changed: `cant diff 7f3a2c`
+    Diff {
+        /// Session ID (or its first digits), from `cant run`'s message or `cant log`
+        session: String,
+    },
+    /// Put back the files a session changed, as they were before it
+    Revert {
+        /// Session ID (or its first digits)
+        session: String,
+        /// Overwrite files that changed again after the session
         #[arg(long)]
-        accept: bool,
+        force: bool,
+    },
+    /// Accept a session's changes, so `cant` stops reporting them
+    Keep {
+        /// Session ID (or its first digits)
+        session: String,
+    },
+    /// List sessions in which cants changed files that run code outside the sandbox
+    Log {
+        /// Only sessions in this directory
+        dir: Option<PathBuf>,
     },
     /// Check whether this kernel can sandbox cants
     Check,
@@ -164,7 +186,13 @@ fn main() -> ExitCode {
         Command::Show { cant } => show(&cant, &mut out),
         Command::List => list(&mut out),
         Command::New { program, force } => new(&program, force, &mut out),
-        Command::Verify { dir, accept } => verify(dir, accept, &mut out),
+        Command::Verify { dir } => verify(dir, &mut out),
+        Command::Diff { session } => with_session(&session, &mut out, session::describe),
+        Command::Revert { session, force } => {
+            with_session(&session, &mut out, |s| session::revert(s.clone(), force))
+        }
+        Command::Keep { session } => with_session(&session, &mut out, |s| session::keep(s.clone())),
+        Command::Log { dir } => log(dir, &mut out),
         Command::Check => Ok(check(&mut out)),
         Command::Completions { shell } => generated(&mut out, |buf| {
             clap_complete::generate(shell, &mut Cli::command(), "cant", buf);
@@ -257,34 +285,108 @@ fn run(args: RunArgs, out: &mut String) -> Result<ExitCode, Failure> {
         print_explain(out, &found, &ctx, &plan, &skipped);
         return Ok(ExitCode::SUCCESS);
     }
-    // Only the outermost `cant`: nested ones run inside a cant that can't write the baseline,
-    // and a warning from each of them would only repeat it.
-    if std::env::var_os(POLICY_ENV).is_none() {
-        if let Some(warning) = watch::check_on_launch(&ctx.home, &ctx.cwd) {
-            eprintln!("cant: {warning}");
+    // The `cant` a supervisor started just runs the program; everything else happens in the
+    // supervisor. Nested cants (inside another cant) don't supervise or remind either: the
+    // outermost one covers them, and they couldn't write the session directory anyway.
+    let supervised = std::env::var_os(session::SUPERVISED_ENV).is_some();
+    let outermost = std::env::var_os(POLICY_ENV).is_none() && !supervised;
+    if outermost {
+        for line in session::reminder(&session::pending(&ctx.home, &ctx.cwd)) {
+            eprintln!("cant: {line}");
+        }
+        if watched(&plan.policy, &ctx.cwd) {
+            return run_supervised(&ctx, &plan.cant);
         }
     }
     let mut warn = |msg: &str| eprintln!("cant: {msg}");
     Err(cant_launch::exec(plan, &mut warn).into())
 }
 
-fn verify(dir: Option<PathBuf>, accept: bool, out: &mut String) -> Result<ExitCode, Failure> {
+/// Whether a cant may change files in the project directory that run code later: its
+/// manifest (or a cant it may run) grants write access to the current directory, a parent of
+/// it, or anything inside it. Files the user names on the command line, and `--grant`, don't
+/// count: those are the user's own choice.
+fn watched(policy: &Policy, cwd: &Path) -> bool {
+    policy.grants.iter().any(|g| {
+        g.access.write
+            && matches!(g.origin, Origin::Manifest | Origin::Cant { .. })
+            && (cwd.starts_with(&g.path) || g.path.starts_with(cwd))
+    })
+}
+
+fn run_supervised(ctx: &Context, cant: &str) -> Result<ExitCode, Failure> {
+    let (sess, before) = session::begin(&ctx.home, &ctx.cwd, cant).map_err(|e| {
+        Failure::new(format!(
+            "can't record what {cant} changes ({}: {e}); refusing to run it unwatched",
+            session::root(&ctx.home).display()
+        ))
+    })?;
+    let id = sess.id.clone();
+    let outcome = supervise::run(&id);
+    // Check even if starting the program failed: something may have run.
+    match session::finish(sess, &before) {
+        Ok(Some(message)) => eprintln!("cant: {message}"),
+        Ok(None) => {}
+        Err(e) => eprintln!("cant: couldn't check what {cant} changed: {e}"),
+    }
+    let outcome = outcome.map_err(|e| Failure::new(format!("can't run {cant}: {e}")))?;
+    if !outcome.killed.is_empty() {
+        eprintln!(
+            "cant: stopped what {cant} left running: {}",
+            outcome.killed.join(", ")
+        );
+    }
+    Ok(supervise::exit_like(outcome.status))
+}
+
+fn canonical_home() -> Result<PathBuf, Failure> {
     let home = home_dir()?;
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    Ok(std::fs::canonicalize(&home).unwrap_or(home))
+}
+
+fn dir_or_cwd(dir: Option<PathBuf>) -> Result<PathBuf, Failure> {
     let dir = match dir {
         Some(d) => d,
         None => std::env::current_dir()
             .map_err(|e| Failure::new(format!("cannot determine the current directory: {e}")))?,
     };
-    let dir =
-        std::fs::canonicalize(&dir).map_err(|e| Failure::new(format!("{}: {e}", dir.display())))?;
-    let (text, found) = watch::verify(&home, &dir, accept).map_err(Failure::new)?;
+    std::fs::canonicalize(&dir).map_err(|e| Failure::new(format!("{}: {e}", dir.display())))
+}
+
+fn verify(dir: Option<PathBuf>, out: &mut String) -> Result<ExitCode, Failure> {
+    let home = canonical_home()?;
+    let dir = dir_or_cwd(dir)?;
+    let open = session::pending(&home, &dir);
+    if open.is_empty() {
+        outln!(out, "no unresolved changes in {}", dir.display());
+        return Ok(ExitCode::SUCCESS);
+    }
+    for line in session::reminder(&open) {
+        outln!(out, "{line}");
+    }
+    Ok(ExitCode::from(1))
+}
+
+fn with_session(
+    id: &str,
+    out: &mut String,
+    action: impl FnOnce(&session::Session) -> Result<String, String>,
+) -> Result<ExitCode, Failure> {
+    let home = canonical_home()?;
+    let s = session::find(&home, id).map_err(Failure::new)?;
+    let text = action(&s).map_err(Failure::new)?;
     out.push_str(&text);
-    Ok(if found {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    })
+    if !text.ends_with('\n') {
+        out.push('\n');
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn log(dir: Option<PathBuf>, out: &mut String) -> Result<ExitCode, Failure> {
+    let home = canonical_home()?;
+    let dir = dir.map(|d| dir_or_cwd(Some(d))).transpose()?;
+    out.push_str(&session::log(&home, dir.as_deref()));
+    Ok(ExitCode::SUCCESS)
 }
 
 fn origin_rank(o: &Origin) -> u8 {

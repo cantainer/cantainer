@@ -27,6 +27,8 @@ cant-store.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 clap_mangen.workspace = true
+rustix = { workspace = true, features = ["process"] }
+signal-hook.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
