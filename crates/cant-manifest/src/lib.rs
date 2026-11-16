@@ -84,6 +84,13 @@ fn is_zero(n: &u8) -> bool {
 /// The most leading value operands a manifest may declare.
 pub const MAX_VALUE_OPERANDS: u8 = 4;
 
+/// Names, directly inside a project directory, that other tools run code from later and
+/// outside any sandbox: git hooks and config (`.git`), direnv (`.envrc`), editor tasks
+/// (`.vscode`, `.idea`) and the conventional hooks directory (`.githooks`). `$CWD/*` grants
+/// them read-only, and `fs.ensure_dirs` refuses them. Only direct children of the current
+/// directory are covered; see SECURITY.md.
+pub const PROJECT_TRIGGER_NAMES: &[&str] = &[".git", ".envrc", ".vscode", ".idea", ".githooks"];
+
 /// Treatment of operands.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -147,6 +154,15 @@ pub struct FsCapabilities {
     /// Read-write paths (files or whole directory trees).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rw: Vec<String>,
+    /// Directories directly inside the current directory (`$CWD/target`) that `cant` creates
+    /// if missing, before restricting itself, and grants read-write. Needed alongside
+    /// `$CWD/*`, which only covers entries that already exist.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ensure_dirs: Vec<String>,
+    /// Like `ensure_dirs`, for files (`$CWD/Cargo.lock`): created empty if missing, then
+    /// granted read-write.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ensure_files: Vec<String>,
 }
 
 /// Environment passthrough.
@@ -171,6 +187,9 @@ pub enum PathSpec {
     Home(PathBuf),
     /// `$CWD` or `$CWD/src` (stores the part after `$CWD/`)
     Cwd(PathBuf),
+    /// `$CWD/*`: every existing entry directly inside the current directory except
+    /// [`PROJECT_TRIGGER_NAMES`], which are granted read-only. Only valid in `fs.rw`.
+    CwdChildren,
     /// `git` — a bare program name, only allowed for executables.
     Bare(String),
 }
@@ -183,6 +202,9 @@ impl PathSpec {
         }
         if raw.contains('\0') {
             return Err("path contains a NUL byte".into());
+        }
+        if raw == "$CWD/*" {
+            return Ok(PathSpec::CwdChildren);
         }
         let (spec, rest) = if raw == "~" {
             (PathSpec::Home(PathBuf::new()), "")
@@ -228,6 +250,7 @@ impl PathSpec {
             PathSpec::Absolute(p) => p.clone(),
             PathSpec::Home(rest) => join_rest(home, rest),
             PathSpec::Cwd(rest) => join_rest(cwd, rest),
+            PathSpec::CwdChildren => cwd.to_path_buf(),
             PathSpec::Bare(name) => PathBuf::from(name),
         }
     }
@@ -480,8 +503,40 @@ impl Manifest {
             ("capabilities.exec", &self.capabilities.exec, true),
         ] {
             for (i, raw) in entries.iter().enumerate() {
-                if let Err(e) = PathSpec::parse(raw, bare) {
-                    bad(format!("{list}[{i}]"), e);
+                match PathSpec::parse(raw, bare) {
+                    Err(e) => bad(format!("{list}[{i}]"), e),
+                    Ok(PathSpec::CwdChildren) if list != "capabilities.fs.rw" => bad(
+                        format!("{list}[{i}]"),
+                        "`$CWD/*` is only allowed in capabilities.fs.rw".into(),
+                    ),
+                    Ok(_) => {}
+                }
+            }
+        }
+        for (list, entries) in [
+            ("ensure_dirs", &self.capabilities.fs.ensure_dirs),
+            ("ensure_files", &self.capabilities.fs.ensure_files),
+        ] {
+            for (i, raw) in entries.iter().enumerate() {
+                let field = format!("capabilities.fs.{list}[{i}]");
+                match PathSpec::parse(raw, false) {
+                    Ok(PathSpec::Cwd(rest)) => {
+                        let mut parts = rest.components();
+                        let name = match (parts.next(), parts.next()) {
+                            (Some(Component::Normal(n)), None) => n.to_str().unwrap_or(""),
+                            _ => "",
+                        };
+                        if name.is_empty() {
+                            bad(field, format!("`{raw}`: use `$CWD/NAME` (one directory)"));
+                        } else if PROJECT_TRIGGER_NAMES.contains(&name) {
+                            bad(
+                                field,
+                                format!("`{raw}`: `{name}` runs code outside the sandbox"),
+                            );
+                        }
+                    }
+                    Ok(_) => bad(field, format!("`{raw}`: use `$CWD/NAME`")),
+                    Err(e) => bad(field, e),
                 }
             }
         }
@@ -504,8 +559,13 @@ impl Manifest {
                     "value contains a NUL byte".into(),
                 );
             } else if value.starts_with("$CWD") || value.starts_with('~') {
-                if let Err(e) = PathSpec::parse(value, false) {
-                    bad(format!("env.set.{name}"), e);
+                match PathSpec::parse(value, false) {
+                    Err(e) => bad(format!("env.set.{name}"), e),
+                    Ok(PathSpec::CwdChildren) => bad(
+                        format!("env.set.{name}"),
+                        "`$CWD/*` is not a single path".into(),
+                    ),
+                    Ok(_) => {}
                 }
             }
         }
@@ -602,6 +662,32 @@ pass = ["LANG", "LC_*"]
             Err(ManifestError::Invalid(p)) => p,
             other => panic!("expected validation failure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn cwd_children_only_in_rw_and_ensure_names_are_single_safe_entries() {
+        let with = |caps: &str| format!("{CAT}\n[capabilities]\n{caps}\n");
+        assert!(Manifest::from_toml_str(&with("fs.rw = [\"$CWD/*\"]")).is_ok());
+        assert!(
+            Manifest::from_toml_str(&with(
+                "fs.rw = [\"$CWD/*\"]\nfs.ensure_dirs = [\"$CWD/target\"]\nfs.ensure_files = [\"$CWD/Cargo.lock\"]"
+            ))
+            .is_ok()
+        );
+        for bad in [
+            "fs.ro = [\"$CWD/*\"]",
+            "exec = [\"$CWD/*\"]",
+            "fs.ensure_dirs = [\"$CWD\"]",
+            "fs.ensure_dirs = [\"$CWD/a/b\"]",
+            "fs.ensure_dirs = [\"~/target\"]",
+            "fs.ensure_dirs = [\"$CWD/.git\"]",
+            "fs.ensure_files = [\"$CWD/.envrc\"]",
+            "fs.ensure_files = [\"/etc/x\"]",
+        ] {
+            assert!(Manifest::from_toml_str(&with(bad)).is_err(), "{bad}");
+        }
+        let env = format!("{CAT}\n[env]\nset = {{ X = \"$CWD/*\" }}\n");
+        assert!(Manifest::from_toml_str(&env).is_err());
     }
 
     #[test]

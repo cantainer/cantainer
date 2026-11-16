@@ -22,6 +22,7 @@ pub const BUILTIN: &[(&str, &str)] = &[
     ("diff", include_str!("../cants/diff.toml")),
     ("find", include_str!("../cants/find.toml")),
     ("git", include_str!("../cants/git.toml")),
+    ("git-write", include_str!("../cants/git-write.toml")),
     ("grep", include_str!("../cants/grep.toml")),
     ("head", include_str!("../cants/head.toml")),
     ("jq", include_str!("../cants/jq.toml")),

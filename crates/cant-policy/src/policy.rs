@@ -64,6 +64,9 @@ pub struct Grant {
     /// Only set for writable command-line files.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create: bool,
+    /// With `create`: the path is a directory (`fs.ensure_dirs`), created empty if missing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dir: bool,
 }
 
 /// Everything a cant may do.
@@ -113,6 +116,7 @@ impl Policy {
         if let Some(existing) = self.grants.iter_mut().find(|g| g.path == grant.path) {
             existing.access = existing.access | grant.access;
             existing.create |= grant.create;
+            existing.dir |= grant.dir;
         } else {
             self.grants.push(grant);
         }
@@ -167,6 +171,7 @@ pub fn intersect(parent: &Policy, child: &Policy) -> Policy {
                 access,
                 origin: c.origin.clone(),
                 create: c.create && path == &c.path,
+                dir: c.dir && path == &c.path,
             });
         }
     }
@@ -202,6 +207,7 @@ mod tests {
             access,
             origin: Origin::Manifest,
             create: false,
+            dir: false,
         }
     }
 
@@ -341,6 +347,7 @@ mod tests {
                         access,
                         origin: Origin::Manifest,
                         create: false,
+                        dir: false,
                     });
                 }
                 p

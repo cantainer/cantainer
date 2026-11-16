@@ -134,6 +134,22 @@ Grants for files named on the command line:
 | `chmod_by_path` | `false` | May change permissions by path (`chmod`), to modes within `0775` (no setuid, setgid, sticky or other-write). Needed by GNU ld, which marks the programs it links executable this way. It applies to any path, including files the cant can't open; see [SECURITY.md](../SECURITY.md). |
 | `cants` | `[]` | Cants this cant may run with `cant run NAME` (for example an agent's shell: `cants = ["git", "rg"]`). See below. |
 
+`fs.rw` also accepts `$CWD/*`, and `fs.ensure_dirs` / `fs.ensure_files` name entries to create:
+
+| Field | Meaning |
+|---|---|
+| `fs.rw = ["$CWD/*"]` | Every existing entry directly inside the current directory is granted read-write, **except** `.git`, `.envrc`, `.vscode`, `.idea` and `.githooks`, which stay read-only (the directory itself is readable). Those are what git, direnv and editors run code from later, outside any sandbox, so a write there is a delayed escape. Symlinks are skipped. Only `fs.rw` accepts it. |
+| `fs.ensure_dirs = ["$CWD/target"]` | `cant` creates the directory (empty) if missing, before restricting itself, and grants it read-write. One name, directly in `$CWD`; the names above are refused. |
+| `fs.ensure_files = ["$CWD/Cargo.lock"]` | The same for a file, created empty. |
+
+With `$CWD/*` a cant **can't create, rename or delete entries directly in the project
+directory**, because Landlock attaches those rights to the directory itself, and granting them
+would cover `.git/hooks` too. Inside existing subdirectories everything works. Entries created
+after launch aren't covered. That is why cargo declares `ensure_dirs` and `ensure_files`: it
+must create `target/` and `Cargo.lock` in a fresh project. Only the top level is checked: a
+nested `.envrc`, `.vscode` or a submodule's `.git` inside a granted subdirectory is writable
+(see [SECURITY.md](../SECURITY.md)).
+
 Paths in `fs.ro`, `fs.rw` and `exec` take one of these forms:
 
 - `/absolute/path`

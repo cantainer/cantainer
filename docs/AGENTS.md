@@ -16,7 +16,7 @@ cant run agent-sh -c 'cant run rg TODO && cant run cargo test && cant run git di
 
 | | |
 |---|---|
-| Files | read and write the current directory; nothing else of yours |
+| Files | read the current directory; write the files and directories already in it, except `.git`, `.envrc`, `.vscode`, `.idea`, `.githooks` (read-only). No new files directly in the project root. Nothing else of yours |
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, credentials, shell startup files: never |
 | Network | none (no sockets at all) |
 | Programs | the tools listed in `cants`, either as `cant run TOOL` or directly |
@@ -48,8 +48,15 @@ Things to know:
   agent-sh's rights, which are the boundary. Because agent-sh may run `cargo`, it can execute
   files in the current directory (build scripts, tests), and it can read the Rust toolchain and
   `/usr/lib`.
-- **The agent can modify the project**, including `.git`. Review its changes; commit or stash
-  your own work first. It can't push: there's no network.
+- **The agent can modify the working tree, but not `.git`, `.envrc` or editor settings.** Those
+  are what git, direnv and your editor run code from later, outside any cant (`core.fsmonitor`,
+  hooks, aliases), so a write there would be an escape. Consequences: the agent can't commit,
+  stage or switch branches (`git add` fails with "Permission denied"; `git status`, `diff`, `log`
+  work), and it can't create, rename or delete files directly in the project root (it can in
+  subdirectories). You commit: `cant run git-write commit` (git-write is not in agent-sh's list;
+  inside agent-sh it gets only agent-sh's rights). Review the changes first; hooks and
+  Makefiles, `package.json` scripts and the like are still ordinary files the agent can edit.
+  It can't push: there's no network.
 
 ## Wiring it into an agent
 

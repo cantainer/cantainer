@@ -227,6 +227,36 @@ Rejected:
 - **A supervisor that launches nested cants on request**: contradicts "no daemon, no
   supervisor" and adds an IPC surface.
 
+### Project directories: `$CWD/*` and read-only triggers
+
+A writable project directory lets a tool plant code that other programs run later with the
+user's full rights: `.git/config` (`core.fsmonitor`, `core.pager`, aliases), `.git/hooks`,
+`.envrc` (direnv), `.vscode` and `.idea` (tasks). Landlock can't make a subpath of a writable
+directory read-only, and git creates files inside `.git` (`index.lock`), so no Landlock rule
+can allow "git writes `.git` but not `.git/hooks`".
+
+Decision (agents first): `fs.rw = ["$CWD/*"]` grants each existing entry of the project
+directory separately and leaves those names read-only; the directory itself is only readable.
+`git` and `agent-sh` use it, and so do `cargo` and `cargo-net` (their build scripts could
+plant the same files; `capabilities.cants` unions grants, so agent-sh would otherwise inherit
+cargo's `$CWD`). `fs.ensure_dirs`/`ensure_files` create what cargo needs (`target`,
+`Cargo.lock`). Writing `.git` is a separate cant, `git-write`, for the user, not listed in
+agent-sh.
+
+Costs, accepted: no creating, renaming or deleting entries in the project root (those rights
+belong to the directory), no commits by the agent, entries created after launch aren't
+granted, and only top-level names are covered (a nested `.envrc`, submodule `.git`, `Makefile`
+or `package.json` script is still writable). Symlinks in the directory are skipped.
+
+Rejected:
+
+- **A tripwire** (hash the trigger files, warn on change): detects after the fact, needs the
+  user to look; not fail-closed.
+- **Read-only bind mounts in a user namespace**: strongest, keeps agent commits, but brings
+  namespaces back (restricted on Ubuntu 24.04), startup cost and a fail-closed fallback.
+- **Documenting only**: leaves the default agent setup able to escape.
+- **Pre-creating nothing for cargo**: a fresh checkout wouldn't build.
+
 ### Manifest lookup
 
 Order: `~/.config/cantainer/cants/` (the user), `/etc/cantainer/cants/` (the administrator),

@@ -90,6 +90,7 @@ pub fn include_cants(
         access: Access::RX,
         origin: launcher.clone(),
         create: false,
+        dir: false,
     });
     built.exec_targets.push(exe);
     let reads = catalog
@@ -104,6 +105,7 @@ pub fn include_cants(
                 access: Access::R,
                 origin: launcher.clone(),
                 create: false,
+                dir: false,
             });
         }
     }

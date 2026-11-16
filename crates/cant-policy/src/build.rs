@@ -5,7 +5,7 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use cant_manifest::{Manifest, PathSpec};
+use cant_manifest::{Manifest, PROJECT_TRIGGER_NAMES, PathSpec};
 
 use crate::protect::{Collision, Protected};
 use crate::{Access, Grant, Origin, Policy, file_args};
@@ -268,6 +268,7 @@ impl Builder<'_> {
             access,
             origin,
             create,
+            dir: false,
         });
         Ok(())
     }
@@ -280,6 +281,9 @@ impl Builder<'_> {
                 io::Error::new(io::ErrorKind::InvalidInput, e),
             )
         })?;
+        if spec == PathSpec::CwdChildren {
+            return self.grant_cwd_children(access, origin);
+        }
         let path = match &spec {
             PathSpec::Bare(name) => match find_program(name) {
                 Some(p) => p,
@@ -297,6 +301,87 @@ impl Builder<'_> {
             Ok(canonical) => self.grant(canonical, access, origin, false),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 self.skipped.push(Skipped { path, origin });
+                Ok(())
+            }
+            Err(e) => Err(self.io_err(&path, e)),
+        }
+    }
+
+    /// `$CWD/*`: the current directory is readable; its existing entries are each granted
+    /// `access`, except those named in [`PROJECT_TRIGGER_NAMES`] (`.git`, `.envrc`, ...),
+    /// which stay read-only because tools run code from them later, outside any sandbox. Symlinks are skipped:
+    /// writing through one to somewhere else would be denied anyway. Landlock can't carve a
+    /// read-only subdirectory out of a writable one, which is why this lists the entries
+    /// instead of granting the directory.
+    fn grant_cwd_children(&mut self, access: Access, origin: Origin) -> Result<(), PolicyError> {
+        // The directory itself is checked first, so that running from a directory that
+        // contains a protected path (such as the home directory) is still refused.
+        let cwd = self.ctx.cwd.clone();
+        self.check_protected(&cwd, access, &origin)?;
+        // The directory stays readable as a whole (listing it, reading `.git`); `access` is
+        // granted entry by entry. Creating, renaming and deleting entries directly in the
+        // directory is not possible, since those rights belong to the directory itself.
+        self.grant(cwd.clone(), Access::R, origin.clone(), false)?;
+        let entries = std::fs::read_dir(&cwd).map_err(|e| self.io_err(&cwd, e))?;
+        let mut names = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| self.io_err(&cwd, e))?;
+            names.push(entry.file_name());
+        }
+        names.sort();
+        for name in names {
+            let path = cwd.join(&name);
+            let meta = match std::fs::symlink_metadata(&path) {
+                Ok(m) => m,
+                // Removed since the listing.
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(self.io_err(&path, e)),
+            };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+            let trigger = name
+                .to_str()
+                .is_some_and(|n| PROJECT_TRIGGER_NAMES.contains(&n));
+            if !trigger {
+                self.grant(path, access, origin.clone(), false)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `fs.ensure_dirs` / `fs.ensure_files`: an entry in the current directory that the
+    /// launcher creates (empty) if missing, then grants read-write.
+    fn grant_ensure(&mut self, raw: &str, dir: bool) -> Result<(), PolicyError> {
+        let spec = PathSpec::parse(raw, false).map_err(|e| {
+            self.io_err(
+                Path::new(raw),
+                io::Error::new(io::ErrorKind::InvalidInput, e),
+            )
+        })?;
+        let path = spec.resolve(&self.ctx.home, &self.ctx.cwd);
+        let origin = Origin::Manifest;
+        match std::fs::symlink_metadata(&path) {
+            Ok(m) if (dir && m.file_type().is_dir()) || (!dir && m.file_type().is_file()) => {
+                self.grant(path, Access::RW, origin, false)
+            }
+            Ok(_) => Err(self.io_err(
+                &path,
+                io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "exists and is not a plain file or directory of the right kind \
+                     (symlinks are not followed)",
+                ),
+            )),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                self.check_protected(&path, Access::RW, &origin)?;
+                self.policy.add(Grant {
+                    path,
+                    access: Access::RW,
+                    origin,
+                    create: true,
+                    dir,
+                });
                 Ok(())
             }
             Err(e) => Err(self.io_err(&path, e)),
@@ -400,6 +485,7 @@ pub fn build(
             access: ug.access,
             origin: Origin::User,
             create: false,
+            dir: false,
         });
     }
 
@@ -418,6 +504,12 @@ pub fn build(
     }
     for raw in &manifest.capabilities.fs.rw {
         b.grant_spec(raw, Access::RW, Origin::Manifest)?;
+    }
+    for raw in &manifest.capabilities.fs.ensure_dirs {
+        b.grant_ensure(raw, true)?;
+    }
+    for raw in &manifest.capabilities.fs.ensure_files {
+        b.grant_ensure(raw, false)?;
     }
     let before = b.policy.grants.len();
     for raw in &manifest.capabilities.exec {
@@ -535,6 +627,85 @@ operands = "r"
         let args: Vec<OsString> = args.iter().map(OsString::from).collect();
         let grants: Vec<UserGrant> = grants.iter().map(|g| g.parse().expect("grant")).collect();
         build(&manifest, &ctx, &args, &grants)
+    }
+
+    fn cwd_children_manifest(extra: &str) -> String {
+        format!("{CAT}\n[capabilities]\nfs.rw = [\"$CWD/*\"]\n{extra}\n")
+    }
+
+    #[test]
+    fn cwd_children_grants_entries_but_not_trigger_names() {
+        let f = fixture();
+        for dir in [".git/hooks", ".vscode", "src"] {
+            std::fs::create_dir_all(f.work.join(dir)).expect("mkdir");
+        }
+        std::fs::write(f.work.join(".git/config"), "").expect("write");
+        std::fs::write(f.work.join(".envrc"), "").expect("write");
+        std::os::unix::fs::symlink("/etc", f.work.join("etc-link")).expect("symlink");
+        let built = run(&cwd_children_manifest(""), &f, &[], &[]).expect("ok");
+        let p = &built.policy;
+        // Existing entries are writable; the project directory is readable as a whole.
+        assert!(p.permits(&f.work.join("notes.txt"), Access::RW));
+        assert!(p.permits(&f.work.join("src/new.rs"), Access::RW));
+        assert!(p.permits(&f.work, Access::R));
+        assert!(!p.permits(&f.work, Access::RW));
+        // Things other tools run code from later: readable, never writable.
+        for name in [
+            ".git/config",
+            ".git/hooks/pre-commit",
+            ".envrc",
+            ".vscode/tasks.json",
+        ] {
+            assert!(p.permits(&f.work.join(name), Access::R), "{name} readable");
+            assert!(
+                !p.permits(&f.work.join(name), Access::RW),
+                "{name} writable"
+            );
+        }
+        // Symlinks aren't followed or granted.
+        assert!(!p.permits(&f.work.join("etc-link"), Access::RW));
+        // Entries created after launch aren't covered.
+        assert!(!p.permits(&f.work.join("later.txt"), Access::RW));
+    }
+
+    #[test]
+    fn cwd_children_is_refused_in_a_directory_holding_secrets() {
+        let f = fixture();
+        let manifest = Manifest::from_toml_str(&cwd_children_manifest("")).expect("manifest");
+        let ctx = Context::new(f.home.clone(), f.home.clone());
+        let err = build(&manifest, &ctx, &[], &[]).expect_err("home holds .ssh");
+        assert!(err.to_string().contains("~/.ssh"), "{err}");
+    }
+
+    #[test]
+    fn ensure_dirs_and_files_are_created_by_the_launcher() {
+        let f = fixture();
+        let m = cwd_children_manifest(
+            "fs.ensure_dirs = [\"$CWD/target\"]\nfs.ensure_files = [\"$CWD/Cargo.lock\"]",
+        );
+        let built = run(&m, &f, &[], &[]).expect("ok");
+        let target = built
+            .policy
+            .grants
+            .iter()
+            .find(|g| g.path == f.work.join("target"))
+            .expect("target");
+        assert!(target.create && target.dir && target.access == Access::RW);
+        let lock = built
+            .policy
+            .grants
+            .iter()
+            .find(|g| g.path == f.work.join("Cargo.lock"))
+            .expect("lock");
+        assert!(lock.create && !lock.dir);
+        assert!(
+            !f.work.join("target").exists(),
+            "building must not touch the disk"
+        );
+
+        // An existing symlink at that name is refused, not followed.
+        std::os::unix::fs::symlink("/etc", f.work.join("target")).expect("symlink");
+        assert!(run(&m, &f, &[], &[]).is_err());
     }
 
     #[test]

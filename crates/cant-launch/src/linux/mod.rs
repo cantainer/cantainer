@@ -24,6 +24,7 @@ fn add_existing(policy: &mut Policy, path: &Path, access: Access, origin: Origin
             access,
             origin,
             create: false,
+            dir: false,
         });
     }
 }
@@ -171,6 +172,26 @@ fn create_pending(path: &PathBuf) -> Result<(), LaunchError> {
     }
 }
 
+/// Creates a directory named by `fs.ensure_dirs`. `mkdir` does not follow a symlink at that
+/// name; an existing real directory is accepted.
+fn create_pending_dir(path: &PathBuf) -> Result<(), LaunchError> {
+    match std::fs::create_dir(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => match std::fs::symlink_metadata(path)
+        {
+            Ok(m) if m.file_type().is_dir() => Ok(()),
+            _ => Err(LaunchError::Create {
+                path: path.clone(),
+                source: e,
+            }),
+        },
+        Err(source) => Err(LaunchError::Create {
+            path: path.clone(),
+            source,
+        }),
+    }
+}
+
 pub fn exec(plan: Plan, warn: &mut dyn FnMut(&str)) -> LaunchError {
     match enforce(&plan, warn) {
         Ok(()) => {}
@@ -190,7 +211,11 @@ pub fn exec(plan: Plan, warn: &mut dyn FnMut(&str)) -> LaunchError {
 
 fn enforce(plan: &Plan, warn: &mut dyn FnMut(&str)) -> Result<(), LaunchError> {
     for g in plan.policy.grants.iter().filter(|g| g.create) {
-        create_pending(&g.path)?;
+        if g.dir {
+            create_pending_dir(&g.path)?;
+        } else {
+            create_pending(&g.path)?;
+        }
     }
     let enforced = landlock::restrict(&plan.policy)?;
     if !plan.policy.network && enforced.abi < 4 {

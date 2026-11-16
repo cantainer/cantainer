@@ -76,5 +76,13 @@ These are current gaps. Most are kernel limits, and some are planned work.
   manifest grants them; this fails closed.
 - **seccomp is a deny list.** System calls not listed are allowed, and Landlock is the primary
   filesystem control. Architectures other than x86_64, aarch64 and riscv64 are unsupported.
+- **Delayed execution is only closed for known names, at the top level.** `git`, `agent-sh` and
+  `cargo` can't write `.git`, `.envrc`, `.vscode`, `.idea` or `.githooks` directly in the project
+  directory, which stops the best-known ways to run code later outside the sandbox. Everything
+  else in the project stays writable, and anything you later run unsandboxed can execute it: a
+  `Makefile`, `package.json` scripts, `build.rs`, test files, `.gitattributes` filters you
+  configure yourself, a nested `.envrc` or `.vscode` in a subdirectory, a submodule's `.git`.
+  Review what an agent changed before you run it outside a cant. `git-write` can write `.git`
+  and so can plant hooks; use it only on repositories you trust.
 - **`CANT_POLICY` is informational.** A cant can forge it to change what a nested `cant` prints,
   but not what the kernel enforces.

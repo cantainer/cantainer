@@ -740,7 +740,7 @@ fn agent_sh_runs_tools_only_as_cants() {
     ok("cant run cat notes.txt", "hello");
     ok("cant run grep -rn world", "notes2.txt:2:world");
     ok("cant run git status --short", "?? notes.txt");
-    ok("echo made > new.txt && cant run cat new.txt", "made");
+    ok("echo made >> notes.txt && cant run cat notes.txt", "made");
     ok("cat notes.txt", "hello"); // directly, within agent-sh's own rights
 
     // Secrets: refused by the nested cant, and denied by the kernel when tried directly.
@@ -762,6 +762,94 @@ fn agent_sh_runs_tools_only_as_cants() {
     // No network for anything inside, and no start from a directory holding secrets.
     let o = agent(&f, &f.home, "true");
     assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+}
+
+/// Files that other tools run code from later (git hooks and config, direnv, editor tasks) are
+/// read-only for agent-sh, git and cargo, while the rest of the project stays writable.
+#[test]
+fn project_trigger_files_are_read_only_for_agents() {
+    if !library_ready(&["bash", "git", "cat"]) {
+        return;
+    }
+    let f = Fixture::new().with_project();
+    let git = |args: &[&str]| {
+        let o = Command::new("git")
+            .args(args)
+            .current_dir(&f.work)
+            .output()
+            .expect("git");
+        assert!(o.status.success(), "git {args:?}: {}", stderr(&o));
+    };
+    git(&["init", "-q"]);
+    std::fs::create_dir_all(f.work.join(".vscode")).expect("mkdir");
+    std::fs::write(f.work.join(".vscode/tasks.json"), "{}").expect("write");
+    std::fs::write(f.work.join(".envrc"), "# direnv\n").expect("write");
+
+    let o = agent(
+        &f,
+        &f.work,
+        "echo '[core]' > .git/config; echo \"config: $?\"; \
+         echo x > .git/hooks/pre-commit; echo \"hook: $?\"; \
+         echo x > .envrc; echo \"envrc: $?\"; \
+         echo x > .vscode/tasks.json; echo \"vscode: $?\"; \
+         echo x > .vscode/new.json; echo \"vscode new: $?\"; \
+         echo x > new-top-level.txt; echo \"new top level: $?\"; \
+         echo '// edit' >> src/main.rs; echo \"edit: $?\"; \
+         echo y > src/new.rs; echo \"new in subdir: $?\"; \
+         cat .git/HEAD .envrc",
+    );
+    let out = stdout(&o);
+    for denied in [
+        "config",
+        "hook",
+        "envrc",
+        "vscode",
+        "vscode new",
+        "new top level",
+    ] {
+        assert!(
+            !out.contains(&format!("{denied}: 0")),
+            "{denied} was writable:\n{out}"
+        );
+        assert!(
+            out.contains(&format!("{denied}: 1")),
+            "{denied}:\n{out}{}",
+            stderr(&o)
+        );
+    }
+    assert!(out.contains("edit: 0"), "{out}{}", stderr(&o));
+    assert!(out.contains("new in subdir: 0"), "{out}{}", stderr(&o));
+    assert!(out.contains("ref: refs/heads/"), "reads still work:\n{out}");
+    assert_eq!(
+        std::fs::read_to_string(f.work.join(".envrc")).expect("read"),
+        "# direnv\n"
+    );
+    assert!(!f.work.join(".git/hooks/pre-commit").exists());
+
+    // git itself: reads work, writes to .git don't (so no commit), the working tree is editable.
+    let o = agent(&f, &f.work, "cant run git status --short");
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    assert!(stdout(&o).contains("?? notes.txt"), "{}", stdout(&o));
+    let o = agent(&f, &f.work, "cant run git add notes.txt");
+    assert!(!o.status.success(), "git add wrote .git/index");
+    assert!(stderr(&o).contains("Permission denied"), "{}", stderr(&o));
+
+    // git-write is the explicit way to write .git. It is a separate cant, not in agent-sh.
+    let o = f
+        .command(&["run", "git-write", "add", "notes.txt"])
+        .current_dir(&f.work)
+        .stdin(Stdio::null())
+        .output()
+        .expect("git-write");
+    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
+    // Inside agent-sh it gets the intersection with agent-sh's rights, so it can't write .git.
+    let o = agent(&f, &f.work, "cant run git-write add src/main.rs");
+    assert!(
+        !o.status.success() && stderr(&o).contains("Permission denied"),
+        "git-write wrote .git from inside agent-sh: {}{}",
+        stdout(&o),
+        stderr(&o)
+    );
 }
 
 // ---- cargo -----------------------------------------------------------------------------------
@@ -974,5 +1062,38 @@ fn cargo_builds_but_build_scripts_cannot_reach_secrets() {
     assert_eq!(
         std::fs::read_to_string(registry.join("src/dep.rs")).expect("read"),
         "original"
+    );
+
+    // Nor can it plant code in the project that runs later, outside the sandbox: .git hooks
+    // and config, .envrc. (A fresh checkout still builds: target/ and Cargo.lock are created.)
+    std::fs::create_dir_all(f.work.join(".git/hooks")).expect("mkdir");
+    std::fs::write(f.work.join(".git/config"), "[core]\n").expect("write");
+    std::fs::write(
+        f.work.join("build.rs"),
+        format!(
+            "fn main() {{\n\
+             for p in [{0:?}, {1:?}, {2:?}] {{\n\
+             assert!(std::fs::write(p, \"x\").is_err(), \"{{p}} is writable\");\n\
+             }}\n\
+             println!(\"cargo:rustc-env=GREETING=built\");\n\
+             }}\n",
+            f.work.join(".git/config"),
+            f.work.join(".git/hooks/post-checkout"),
+            f.work.join(".envrc"),
+        ),
+    )
+    .expect("write");
+    let _ = std::fs::remove_dir_all(f.work.join("target"));
+    let _ = std::fs::remove_file(f.work.join("Cargo.lock"));
+    let o = run(&["build", "-q"]);
+    assert!(
+        o.status.success(),
+        "build script could write project trigger files, or a fresh build failed: {}{}",
+        stdout(&o),
+        stderr(&o)
+    );
+    assert_eq!(
+        std::fs::read_to_string(f.work.join(".git/config")).expect("read"),
+        "[core]\n"
     );
 }
