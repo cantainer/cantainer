@@ -166,6 +166,37 @@ come with step 3. Decided 2026-11-16: `/proc/self/exe` (uutils coreutils) and `g
 the git cant are documented limitations for 0.1.0, both backlogged (CANS.md §14, VISION.md).
 CI: check the run after every push (`gh run list`); it was red unnoticed after d45a30c.
 
+## Next steps (as of 2026-11-16)
+
+1. **Finish the 0.0.4 release** (commit "Release 0.0.4", tag `v0.0.4`, pushed 2026-11-16). The
+   release workflow stops at `cant-pack` (never published). The maintainer publishes
+   `cant-pack` and `cant-registry` 0.0.4 once by hand from the tag, adds Trusted Publishing for
+   both on crates.io, and re-runs the failed job (docs/RELEASING.md, "A new crate"). Then check
+   every channel: crates.io (7 crates), GitHub release, APT/RPM repos, Homebrew tap.
+2. **Codespace access to `cantainer/cans`:** devcontainer.json now requests it; the maintainer
+   rebuilds the codespace and approves. Then copy `dev/cans-repo/` (pack workflow + README)
+   into `cantainer/cans` and push.
+3. **Finish cans step 3 (GHCR):** run the `pack` workflow in `cantainer/cans` by hand; check
+   that `ghcr.io/cantainer/grep` and `ghcr.io/cantainer/git` exist and are **private**; pull and
+   run one from here with a token (`CANT_REGISTRY_USER`/`CANT_REGISTRY_TOKEN`). Packages stay
+   private until steps 4 and 6 below are done (maintainer's decision, 2026-11-16: GPL/LGPL
+   binaries need their sources published with them).
+4. **Cans step 4: signing and approval.** Propose a plan first. Sigstore keyless signing in the
+   `cantainer/cans` workflow (signer identity = that workflow); verification in `cant` with
+   `sigstore-verify` 0.16 (verify crate versions again); bundles as OCI referrers, with the tag
+   fallback ghcr.io needs (test against GHCR); signature policy file; first-run approval
+   prompt on /dev/tty, diff on update, `--approve-if-within`; then drop the "pull it yourself"
+   rule for signed cans.
+5. **Cans step 5:** `cant inspect REF` (label, signer, SBOM, closure age), `cant gc`,
+   `cant audit` (OSV).
+6. **Minimal licensing (CANS.md §8) before any can goes public:** source packages pushed as a
+   referrer of each can (`apt-get source` / SRPMs), licenses in the SBOM. Then make the GHCR
+   packages public.
+7. **Cans steps 6-7:** 3-5 MCP servers as cans (Go first), `docs/MCP.md`, demo tape, 0.1.0.
+
+Backlog: CANS.md §14 and VISION.md (host allowlist, `/proc/self/exe` and bundled helpers,
+`git config` in the git cant, base cans, composefs).
+
 Open items:
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
   secrets (Trusted Publishing worked for 0.0.3).

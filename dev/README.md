@@ -19,3 +19,8 @@ release, checksum-verified) on `127.0.0.1:5000`. The dev container installs it a
 every start, and sets `CANT_TEST_REGISTRY=127.0.0.1:5000`, which enables the push/pull
 integration test (`a_can_goes_through_a_registry`). CI does the same in the `sandbox` and
 `arm64` jobs.
+
+## `cans-repo/`
+
+The pack workflow and README for [cantainer/cans](https://github.com/cantainer/cans), kept
+here until they are pushed there (the codespace token couldn't write that repository yet).
