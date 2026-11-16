@@ -49,6 +49,11 @@ pub struct Resolved {
     pub libs: Vec<PathBuf>,
     /// `DT_NEEDED` names that could not be found.
     pub missing: Vec<String>,
+    /// `PT_INTERP` exactly as written in the file (what the kernel will open).
+    pub interpreter_literal: Option<PathBuf>,
+    /// Each library as found: the path where its `DT_NEEDED` name was found (so its file name
+    /// is the name the loader looks for), and the canonical file. Used by `cant pack`.
+    pub found: Vec<(PathBuf, PathBuf)>,
 }
 
 const PT_LOAD: u32 = 1;
@@ -425,6 +430,7 @@ pub fn resolve(binary: &Path) -> Result<Resolved, ElfError> {
     let mut out = Resolved::default();
     if let Some(interp) = &main.interp {
         out.interpreter = Some(std::fs::canonicalize(interp).unwrap_or_else(|_| interp.into()));
+        out.interpreter_literal = Some(PathBuf::from(interp));
     }
     // glibc: DT_RPATH of the executable applies to all its dependencies unless DT_RUNPATH exists.
     let exe_rpath: Vec<String> = if main.runpath.is_empty() {
@@ -479,7 +485,8 @@ pub fn resolve(binary: &Path) -> Result<Resolved, ElfError> {
                     }
                 }
             }
-            let canonical = std::fs::canonicalize(&found).unwrap_or(found);
+            let canonical = std::fs::canonicalize(&found).unwrap_or_else(|_| found.clone());
+            out.found.push((found, canonical.clone()));
             if seen_paths.insert(canonical.clone()) {
                 out.libs.push(canonical.clone());
                 if let Ok(child) = read_dyn_info(&canonical) {
