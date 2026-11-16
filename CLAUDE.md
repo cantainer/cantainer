@@ -168,11 +168,11 @@ CI: check the run after every push (`gh run list`); it was red unnoticed after d
 
 ## Next steps (as of 2026-11-16)
 
-1. **Finish the 0.0.4 release** (commit "Release 0.0.4", tag `v0.0.4`, pushed 2026-11-16). The
-   release workflow stops at `cant-pack` (never published). The maintainer publishes
-   `cant-pack` and `cant-registry` 0.0.4 once by hand from the tag, adds Trusted Publishing for
-   both on crates.io, and re-runs the failed job (docs/RELEASING.md, "A new crate"). Then check
-   every channel: crates.io (7 crates), GitHub release, APT/RPM repos, Homebrew tap.
+1. **0.0.4 released 2026-11-16** through every channel (crates.io: all 7 crates; GitHub release
+   with static binaries, .deb, .rpm, signed SHA256SUMS; APT and RPM repos; Homebrew tap).
+   `cant-pack` and `cant-registry` were first published by the `publish-new-crates` workflow
+   with a `CRATES_TOKEN` repository secret. Still to do by the maintainer: Trusted Publishing for
+   `cant-pack` and `cant-registry` on crates.io, then delete the `CRATES_TOKEN` secret.
 2. **Codespace access to `cantainer/cans`:** devcontainer.json now requests it; the maintainer
    rebuilds the codespace and approves. Then copy `dev/cans-repo/` (pack workflow + README)
    into `cantainer/cans` and push.
@@ -198,8 +198,9 @@ Backlog: CANS.md §14 and VISION.md (host allowlist, `/proc/self/exe` and bundle
 `git config` in the git cant, base cans, composefs).
 
 Open items:
-- The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
-  secrets (Trusted Publishing worked for 0.0.3).
+- The old `CRATES_TOKEN` was revoked (2026-11-16). The new one (repository secret, for the
+  first publish of new crates) should be deleted once Trusted Publishing is set up for
+  `cant-pack` and `cant-registry`.
 - Not yet verified by hand: `dnf install cantainer` from the RPM repo, `brew install
   cantainer/tap/cantainer` on Linux. (On macOS it refuses cleanly, "Linux is required",
   verified by the maintainer after the formula fix in 907a34c.)
