@@ -45,6 +45,12 @@ pub enum Source {
     File(PathBuf),
     /// Compiled into `cant`.
     Builtin(&'static str),
+    /// A can: its layout directory and the digest of its manifest.
+    #[cfg_attr(
+        not(target_os = "linux"),
+        expect(dead_code, reason = "cans run on Linux only")
+    )]
+    Can(PathBuf, String),
 }
 
 impl fmt::Display for Source {
@@ -52,6 +58,7 @@ impl fmt::Display for Source {
         match self {
             Source::File(p) => write!(f, "{}", p.display()),
             Source::Builtin(_) => f.write_str("built in"),
+            Source::Can(p, digest) => write!(f, "can {} ({digest})", p.display()),
         }
     }
 }

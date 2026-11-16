@@ -15,7 +15,9 @@ use cant_policy::{
     Access, Built, Grant, Origin, Policy, display_path, intersect, not_permitted_by,
 };
 
-use crate::{DYNAMIC_LOADERS, LaunchError, POLICY_ENV, Plan, RUNTIME_READ, RUNTIME_READ_WRITE};
+use crate::{
+    CanStart, DYNAMIC_LOADERS, LaunchError, POLICY_ENV, Plan, RUNTIME_READ, RUNTIME_READ_WRITE,
+};
 
 fn add_existing(policy: &mut Policy, path: &Path, access: Access, origin: Origin) {
     if let Ok(canonical) = std::fs::canonicalize(path) {
@@ -35,6 +37,7 @@ pub fn plan(
     user_args: &[OsString],
     parent: Option<&Policy>,
     home: &Path,
+    can: Option<&CanStart>,
 ) -> Result<Plan, LaunchError> {
     let mut policy = built.policy;
     let mut missing_libs = Vec::new();
@@ -49,7 +52,8 @@ pub fn plan(
         .grants
         .iter()
         .any(|g| g.access.contains(Access::RX) && g.path.is_dir());
-    if executes_a_directory {
+    // A can brings its own loader; the host's are none of its business.
+    if executes_a_directory && can.is_none() {
         for path in DYNAMIC_LOADERS {
             add_existing(&mut policy, Path::new(path), Access::RX, Origin::Runtime);
         }
@@ -68,12 +72,15 @@ pub fn plan(
         }
     }
 
-    // The entrypoint must be a usable ELF executable; exec targets are best effort.
-    let main = elf::resolve(&built.program_canonical)?;
-    let mut resolved = vec![main];
-    for target in &built.exec_targets {
-        if let Ok(r) = elf::resolve(target) {
-            resolved.push(r);
+    // The entrypoint must be a usable ELF executable; exec targets are best effort. A can's
+    // libraries are its own files, granted with its root, so nothing is resolved on the host.
+    let mut resolved = Vec::new();
+    if can.is_none() {
+        resolved.push(elf::resolve(&built.program_canonical)?);
+        for target in &built.exec_targets {
+            if let Ok(r) = elf::resolve(target) {
+                resolved.push(r);
+            }
         }
     }
     for r in resolved {
@@ -133,9 +140,31 @@ pub fn plan(
         .collect();
     args.extend(user_args.iter().cloned());
 
+    // A dynamically linked can runs as `<loader> --library-path … --argv0 NAME PROGRAM ARGS`.
+    let mut program = built.program_canonical;
+    if let Some(CanStart {
+        loader: Some(loader),
+        library_path,
+    }) = can
+    {
+        let joined = std::env::join_paths(library_path)
+            .map_err(|e| LaunchError::CanLibraryPath(e.to_string()))?;
+        let mut prefixed: Vec<OsString> = vec![
+            "--inhibit-cache".into(),
+            "--library-path".into(),
+            joined,
+            "--argv0".into(),
+            argv0.clone(),
+            program.clone().into_os_string(),
+        ];
+        prefixed.append(&mut args);
+        args = prefixed;
+        program = loader.clone();
+    }
+
     Ok(Plan {
         cant: manifest.name.clone(),
-        program: built.program_canonical,
+        program,
         argv0,
         args,
         env,

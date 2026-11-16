@@ -187,6 +187,7 @@ version = "0.0.3"
 dependencies = [
  "cant-launch",
  "cant-manifest",
+ "cant-pack",
  "cant-policy",
  "cant-store",
  "clap",

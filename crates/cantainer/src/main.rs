@@ -54,6 +54,15 @@ struct Cli {
 enum Command {
     /// Run a cant: `cant run cat notes.txt`
     Run(RunArgs),
+    /// Make a can from a cant: its program, the program's libraries (libc and the loader
+    /// included), the manifest's `[pack]` files and an SBOM, as an OCI layout directory
+    Pack {
+        /// Cant name or path to a manifest
+        cant: String,
+        /// Where to write the can (default: ./NAME.can)
+        #[arg(short = 'o', long = "output")]
+        output: Option<PathBuf>,
+    },
     /// Show a cant's manifest, binary, digest and capabilities
     Inspect {
         /// Cant name or path to a manifest
@@ -183,6 +192,7 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Command::Run(args) => run(args, &mut out),
         Command::Inspect { cant } => inspect(&cant, &mut out),
+        Command::Pack { cant, output } => pack(&cant, output, &mut out),
         Command::Show { cant } => show(&cant, &mut out),
         Command::List => list(&mut out),
         Command::New { program, force } => new(&program, force, &mut out),
@@ -258,13 +268,78 @@ fn parent_policy() -> Result<Option<Policy>, Failure> {
     }
 }
 
+/// `$XDG_DATA_HOME/cantainer`, or `~/.local/share/cantainer`: the store and installed cans.
+#[cfg(target_os = "linux")]
+fn data_dir(home: &Path) -> PathBuf {
+    match std::env::var_os("XDG_DATA_HOME") {
+        Some(p) if Path::new(&p).is_absolute() => PathBuf::from(p).join("cantainer"),
+        _ => home.join(".local/share/cantainer"),
+    }
+}
+
+/// `name` as a can's layout directory (`./git.can`), if it is one.
+fn can_layout(name: &str) -> Option<PathBuf> {
+    let path = Path::new(name);
+    ((name.contains('/') || name.ends_with(".can")) && path.join("oci-layout").is_file())
+        .then(|| path.to_path_buf())
+}
+
+/// Installs (or finds) the can in `layout` and returns its manifest, root and how to start it.
+#[cfg(target_os = "linux")]
+fn open_can(
+    layout: &Path,
+    home: &Path,
+) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
+    let shown = layout.display().to_string();
+    let can = cant_pack::install::install(layout, &data_dir(home))
+        .map_err(|e| Failure::new(format!("{shown} can't be used: {e}")))?;
+    let text = std::fs::read_to_string(can.dir.join("config.toml"))
+        .map_err(|e| Failure::new(format!("{}: {e}", can.dir.display())))?;
+    let start = cant_launch::CanStart {
+        loader: can
+            .tree
+            .entrypoint
+            .loader
+            .as_ref()
+            .map(|l| can.root.join(l)),
+        library_path: can
+            .tree
+            .entrypoint
+            .library_path
+            .iter()
+            .map(|d| can.root.join(d))
+            .collect(),
+    };
+    let found = Found {
+        source: catalog::Source::Can(layout.to_path_buf(), can.digest.to_string()),
+        text,
+        manifest: can.manifest,
+    };
+    Ok((found, can.root, start))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_can(
+    _layout: &Path,
+    _home: &Path,
+) -> Result<(Found, PathBuf, cant_launch::CanStart), Failure> {
+    Err(Failure::new("cans run on Linux only"))
+}
+
 fn prepare(
     name: &str,
     args: &[OsString],
     grants: &[UserGrant],
 ) -> Result<(Found, Context, Plan, Vec<cant_policy::Skipped>), Failure> {
-    let found = locate(name)?;
-    let ctx = context()?;
+    let mut ctx = context()?;
+    let (found, can_start) = match can_layout(name) {
+        Some(layout) => {
+            let (found, root, start) = open_can(&layout, &ctx.home)?;
+            ctx = ctx.with_can(root);
+            (found, Some(start))
+        }
+        None => (locate(name)?, None),
+    };
     let mut built = cant_policy::build(&found.manifest, &ctx, args, grants)?;
     compose::include_cants(
         &found.manifest,
@@ -275,7 +350,14 @@ fn prepare(
     .map_err(Failure::new)?;
     let skipped = built.skipped.clone();
     let parent = parent_policy()?;
-    let plan = cant_launch::plan(&found.manifest, built, args, parent.as_ref(), &ctx.home)?;
+    let plan = cant_launch::plan(
+        &found.manifest,
+        built,
+        args,
+        parent.as_ref(),
+        &ctx.home,
+        can_start.as_ref(),
+    )?;
     Ok((found, ctx, plan, skipped))
 }
 
@@ -502,6 +584,47 @@ fn inspect(name: &str, out: &mut String) -> Result<ExitCode, Failure> {
         );
     }
     Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(target_os = "linux")]
+fn pack(name: &str, output: Option<PathBuf>, out: &mut String) -> Result<ExitCode, Failure> {
+    let found = locate(name)?;
+    let home = canonical_home()?;
+    let output = output.unwrap_or_else(|| PathBuf::from(format!("{}.can", found.manifest.name)));
+    if output.exists() {
+        return Err(Failure::new(format!(
+            "{} already exists; remove it or choose another with -o",
+            output.display()
+        )));
+    }
+    let packed = cant_pack::pack::pack(&found.manifest, &home, &output).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&output);
+        Failure::new(format!("can't pack {}: {e}", found.manifest.name))
+    })?;
+    outln!(
+        out,
+        "packed {} {} into {}: {} files, {:.1} MB, manifest {}",
+        found.manifest.name,
+        found.manifest.version,
+        packed.dir.display(),
+        packed.files,
+        packed.bytes as f64 / 1e6,
+        packed.manifest_digest
+    );
+    for note in packed.notes {
+        outln!(out, "note: {note}");
+    }
+    outln!(
+        out,
+        "run it with: cant run {} ARGS...",
+        packed.dir.display()
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pack(_name: &str, _output: Option<PathBuf>, _out: &mut String) -> Result<ExitCode, Failure> {
+    Err(Failure::new("cans can be packed on Linux only"))
 }
 
 fn show(name: &str, out: &mut String) -> Result<ExitCode, Failure> {

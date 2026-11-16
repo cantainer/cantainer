@@ -71,6 +71,16 @@ pub const DYNAMIC_LOADERS: &[&str] = &[
     "/lib/ld-musl-riscv64.so.1",
 ];
 
+/// How to start a can's program: through the can's own ELF loader, with the can's own
+/// libraries, and nothing resolved from the host.
+#[derive(Debug, Clone, Default)]
+pub struct CanStart {
+    /// The bundled loader (`<root>/lib64/ld-linux-x86-64.so.2`); `None` for a static program.
+    pub loader: Option<PathBuf>,
+    /// Directories searched for shared libraries, in order.
+    pub library_path: Vec<PathBuf>,
+}
+
 /// Everything needed to start a cant.
 #[derive(Debug, Clone)]
 pub struct Plan {
@@ -108,6 +118,9 @@ pub enum LaunchError {
     #[cfg(target_os = "linux")]
     #[error(transparent)]
     Elf(#[from] ElfError),
+    /// A can's library directories can't be passed to its loader.
+    #[error("the can's library directories can't be passed to its loader: {0}")]
+    CanLibraryPath(String),
     /// Landlock is not available.
     #[error(
         "Landlock is not available on this kernel, so cants cannot be sandboxed; refusing to run (see `cant check`)"
@@ -188,8 +201,9 @@ pub fn plan(
     user_args: &[OsString],
     parent: Option<&Policy>,
     home: &std::path::Path,
+    can: Option<&CanStart>,
 ) -> Result<Plan, LaunchError> {
-    linux::plan(manifest, built, user_args, parent, home)
+    linux::plan(manifest, built, user_args, parent, home, can)
 }
 
 /// Completes `built` into a launch plan (unsupported on this OS).
@@ -200,6 +214,7 @@ pub fn plan(
     _user_args: &[OsString],
     _parent: Option<&Policy>,
     _home: &std::path::Path,
+    _can: Option<&CanStart>,
 ) -> Result<Plan, LaunchError> {
     Err(LaunchError::Unsupported)
 }

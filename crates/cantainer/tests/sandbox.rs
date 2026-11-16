@@ -979,6 +979,121 @@ fn agent_sh_is_watched_and_cannot_keep_its_own_changes() {
     assert!(f.work.join(".envrc").exists(), "keep leaves the file alone");
 }
 
+// ---- Cans -----------------------------------------------------------------------------------
+
+/// Packs a built-in cant into `home/NAME.can` and returns the path.
+fn pack(f: &Fixture, name: &str) -> String {
+    let out = f.home.join(format!("{name}.can"));
+    let o = f.cant(&["pack", name, "-o", out.to_str().expect("utf8")]);
+    assert!(
+        o.status.success(),
+        "pack {name}: {}{}",
+        stdout(&o),
+        stderr(&o)
+    );
+    out.to_str().expect("utf8").to_string()
+}
+
+#[test]
+fn a_can_runs_on_its_own_loader_and_libraries() {
+    if !library_ready(&["cat"]) {
+        return;
+    }
+    let f = Fixture::new();
+    let can = pack(&f, "cat");
+    f.works(&[&can, "notes.txt"], "hello\n");
+    // Protected paths are refused exactly as for any cant.
+    let o = f.cant(&["run", &can, "../.ssh/id_rsa"]);
+    assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
+    assert!(!stdout(&o).contains("PRIVATE KEY"));
+    // Nothing from the host's libraries is granted: the program is the can's loader, and the
+    // only executable grants are the can's own files.
+    let o = f.cant(&["run", "--explain", &can, "notes.txt"]);
+    let text = stdout(&o);
+    assert!(text.contains("the can's files"), "{text}");
+    assert!(text.contains("--inhibit-cache"), "{text}");
+    assert!(
+        !text.contains(" library"),
+        "host libraries granted:\n{text}"
+    );
+}
+
+#[test]
+fn cans_share_files_in_the_store() {
+    if !library_ready(&["cat", "head"]) {
+        return;
+    }
+    let f = Fixture::new();
+    let objects = |f: &Fixture| {
+        let dir = f.home.join(".local/share/cantainer/store/blobs/sha256");
+        std::fs::read_dir(&dir)
+            .map(|rd| {
+                rd.filter_map(Result::ok)
+                    .map(|d| std::fs::read_dir(d.path()).map_or(0, |x| x.count()))
+                    .sum::<usize>()
+            })
+            .unwrap_or(0)
+    };
+    let cat = pack(&f, "cat");
+    f.works(&[&cat, "notes.txt"], "hello");
+    let after_cat = objects(&f);
+    let head = pack(&f, "head");
+    f.works(&[&head, "-n", "1", "notes.txt"], "hello");
+    // head adds its own program, but libc and the loader are already there.
+    assert_eq!(
+        objects(&f),
+        after_cat + 1,
+        "libc and the loader should be shared"
+    );
+}
+
+#[test]
+fn a_changed_installed_can_is_refused() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if !library_ready(&["cat"]) {
+        return;
+    }
+    let f = Fixture::new();
+    let can = pack(&f, "cat");
+    f.works(&[&can, "notes.txt"], "hello");
+    let cans = f.home.join(".local/share/cantainer/cans");
+    let installed = std::fs::read_dir(&cans)
+        .expect("cans")
+        .filter_map(Result::ok)
+        .find(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .expect("installed can")
+        .path();
+    let program = installed.join("root/usr/bin/cat");
+    let program = if program.exists() {
+        program
+    } else {
+        installed.join("root/bin/cat")
+    };
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let mut bytes = std::fs::read(&program).expect("read");
+    bytes[300] ^= 0xff;
+    std::fs::write(&program, &bytes).expect("write");
+    let o = f.cant(&["run", &can, "notes.txt"]);
+    assert_eq!(o.status.code(), Some(125), "{}{}", stdout(&o), stderr(&o));
+    assert!(
+        stderr(&o).contains("changed since it was installed"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn git_as_a_can_works() {
+    if !library_ready(&["git"]) {
+        return;
+    }
+    let f = Fixture::new();
+    git_init(&f);
+    let can = pack(&f, "git");
+    f.works(&[&can, "status", "--short"], "?? notes.txt");
+    f.works(&[&can, "--version"], "git version");
+}
+
 // ---- cargo -----------------------------------------------------------------------------------
 
 /// The built-in cargo manifest, with `~/.cargo` and `~/.rustup` pointing at this machine's
