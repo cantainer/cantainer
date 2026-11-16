@@ -7,6 +7,7 @@
 mod catalog;
 mod compose;
 mod scaffold;
+mod watch;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -71,6 +72,15 @@ enum Command {
         /// Overwrite an existing manifest, or shadow a built-in one
         #[arg(long)]
         force: bool,
+    },
+    /// Report changes to files that run code later (`.git/hooks`, `.git/config`, `.envrc`,
+    /// `.vscode`) since the last check, e.g. after an agent worked in the directory
+    Verify {
+        /// Directory to check (default: the current directory)
+        dir: Option<PathBuf>,
+        /// Record the current state as the new baseline after reporting
+        #[arg(long)]
+        accept: bool,
     },
     /// Check whether this kernel can sandbox cants
     Check,
@@ -154,6 +164,7 @@ fn main() -> ExitCode {
         Command::Show { cant } => show(&cant, &mut out),
         Command::List => list(&mut out),
         Command::New { program, force } => new(&program, force, &mut out),
+        Command::Verify { dir, accept } => verify(dir, accept, &mut out),
         Command::Check => Ok(check(&mut out)),
         Command::Completions { shell } => generated(&mut out, |buf| {
             clap_complete::generate(shell, &mut Cli::command(), "cant", buf);
@@ -246,8 +257,34 @@ fn run(args: RunArgs, out: &mut String) -> Result<ExitCode, Failure> {
         print_explain(out, &found, &ctx, &plan, &skipped);
         return Ok(ExitCode::SUCCESS);
     }
+    // Only the outermost `cant`: nested ones run inside a cant that can't write the baseline,
+    // and a warning from each of them would only repeat it.
+    if std::env::var_os(POLICY_ENV).is_none() {
+        if let Some(warning) = watch::check_on_launch(&ctx.home, &ctx.cwd) {
+            eprintln!("cant: {warning}");
+        }
+    }
     let mut warn = |msg: &str| eprintln!("cant: {msg}");
     Err(cant_launch::exec(plan, &mut warn).into())
+}
+
+fn verify(dir: Option<PathBuf>, accept: bool, out: &mut String) -> Result<ExitCode, Failure> {
+    let home = home_dir()?;
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let dir = match dir {
+        Some(d) => d,
+        None => std::env::current_dir()
+            .map_err(|e| Failure::new(format!("cannot determine the current directory: {e}")))?,
+    };
+    let dir =
+        std::fs::canonicalize(&dir).map_err(|e| Failure::new(format!("{}: {e}", dir.display())))?;
+    let (text, found) = watch::verify(&home, &dir, accept).map_err(Failure::new)?;
+    out.push_str(&text);
+    Ok(if found {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 fn origin_rank(o: &Origin) -> u8 {

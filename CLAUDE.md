@@ -150,6 +150,11 @@ tap. Verified: `apt-get install cantainer` from the repo on Ubuntu 24.04, formul
 SHA256SUMS. Lessons now enforced: CI `cross` + native `arm64` jobs, `dev/check.sh`, release.sh
 requires green CI, `channels.yml` re-publishes the channels of an existing release.
 
+Phase 0 for cans (2026-11-16): more read-only protected paths, offline `cargo` registry read-only,
+`cargo`/`cargo-net` use `$CWD/*` + `fs.ensure_dirs/ensure_files`, and `cant verify` detects planted
+`.git`/`.envrc`/`.vscode` changes for `git` and `agent-sh` (they stay writable so agents can
+commit; decision in ARCHITECTURE.md). Cans design (Phase 1) is next.
+
 Open items:
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
   secrets (Trusted Publishing worked for 0.0.3).

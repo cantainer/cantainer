@@ -16,7 +16,7 @@ cant run agent-sh -c 'cant run rg TODO && cant run cargo test && cant run git di
 
 | | |
 |---|---|
-| Files | read the current directory; write the files and directories already in it, except `.git`, `.envrc`, `.vscode`, `.idea`, `.githooks` (read-only). No new files directly in the project root. Nothing else of yours |
+| Files | read and write the current directory; nothing else of yours |
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, credentials, shell startup files: never |
 | Network | none (no sockets at all) |
 | Programs | the tools listed in `cants`, either as `cant run TOOL` or directly |
@@ -48,15 +48,13 @@ Things to know:
   agent-sh's rights, which are the boundary. Because agent-sh may run `cargo`, it can execute
   files in the current directory (build scripts, tests), and it can read the Rust toolchain and
   `/usr/lib`.
-- **The agent can modify the working tree, but not `.git`, `.envrc` or editor settings.** Those
-  are what git, direnv and your editor run code from later, outside any cant (`core.fsmonitor`,
-  hooks, aliases), so a write there would be an escape. Consequences: the agent can't commit,
-  stage or switch branches (`git add` fails with "Permission denied"; `git status`, `diff`, `log`
-  work), and it can't create, rename or delete files directly in the project root (it can in
-  subdirectories). You commit: `cant run git-write commit` (git-write is not in agent-sh's list;
-  inside agent-sh it gets only agent-sh's rights). Review the changes first; hooks and
-  Makefiles, `package.json` scripts and the like are still ordinary files the agent can edit.
-  It can't push: there's no network.
+- **The agent can modify the project, including `.git`, `.envrc` and `.vscode`.** That lets it
+  commit, which agents need, but it also lets it plant code that runs later with your full
+  rights, outside any cant: `core.fsmonitor`, `core.pager` or an alias in `.git/config`, a hook
+  in `.git/hooks`, an `.envrc`, a VS Code task. Landlock can't make those read-only inside a
+  writable directory, so `cant` **detects** it instead: the first `cant run` in a directory
+  records a baseline of those files, and later runs print a warning if they changed. See
+  [`cant verify`](#noticing-planted-files-cant-verify). It can't push: there's no network.
 
 ## Wiring it into an agent
 
@@ -94,6 +92,36 @@ agent-sh for the commands you route through it.
 
 Running a whole agent (its own process, network access to its API, its config directory) inside
 a cant is not tested yet.
+
+## Noticing planted files: `cant verify`
+
+```console
+$ cant run cat notes.txt
+cant: warning: files that can run code later changed here since you last checked:
+  changed: .git/config
+    RUNS CODE: core.fsmonitor = /tmp/evil.sh
+  new: .git/hooks/post-checkout
+    RUNS CODE: git runs this hook (post-checkout)
+review them with `cant verify`, accept with `cant verify --accept`
+$ cant verify          # shows what changed (+/- lines); exits 1 if anything can run code
+$ cant verify --accept # you looked: make this the new baseline
+```
+
+What is watched, in the project directory: `.git/config`, `.git/hooks/*`, `.git` (if it is a file
+pointing elsewhere), `.envrc`, `.vscode/{tasks,settings,launch,extensions}.json`, `.githooks/*`
+and `.idea/runConfigurations/*`. The baseline is kept in `~/.local/state/cantainer/watch/`,
+which no cant can write.
+
+- Changes that can't run code are accepted silently: a new remote or branch in `.git/config`,
+  removed files. Anything else is reported, including settings `cant` doesn't recognise.
+- It **detects after the fact.** If the agent plants `core.fsmonitor` and a shell prompt or IDE
+  runs `git status` before you next run `cant`, the code has already run once. Run
+  `cant verify` after an agent session, or from your shell prompt, to shrink that window.
+- The first run in a directory trusts what is there (trust on first use). Your own edits show up
+  until you `--accept`.
+- Other files that run later (`Makefile`, `package.json` scripts, `build.rs`, tests) aren't
+  watched: they change all the time. Review the diff before running them outside a cant.
+- Nested `cant` runs (inside agent-sh) never check or update the baseline.
 
 ## Giving the agent more, or less
 

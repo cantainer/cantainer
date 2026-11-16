@@ -227,35 +227,39 @@ Rejected:
 - **A supervisor that launches nested cants on request**: contradicts "no daemon, no
   supervisor" and adds an IPC surface.
 
-### Project directories: `$CWD/*` and read-only triggers
+### Project directories: detect, don't prevent (`cant verify`)
 
 A writable project directory lets a tool plant code that other programs run later with the
 user's full rights: `.git/config` (`core.fsmonitor`, `core.pager`, aliases), `.git/hooks`,
 `.envrc` (direnv), `.vscode` and `.idea` (tasks). Landlock can't make a subpath of a writable
-directory read-only, and git creates files inside `.git` (`index.lock`), so no Landlock rule
-can allow "git writes `.git` but not `.git/hooks`".
+directory read-only, and git creates files inside `.git` (`index.lock`), so no Landlock rule can
+allow "git writes `.git` but not `.git/hooks`".
 
-Decision (agents first): `fs.rw = ["$CWD/*"]` grants each existing entry of the project
-directory separately and leaves those names read-only; the directory itself is only readable.
-`git` and `agent-sh` use it, and so do `cargo` and `cargo-net` (their build scripts could
-plant the same files; `capabilities.cants` unions grants, so agent-sh would otherwise inherit
-cargo's `$CWD`). `fs.ensure_dirs`/`ensure_files` create what cargo needs (`target`,
-`Cargo.lock`). Writing `.git` is a separate cant, `git-write`, for the user, not listed in
-agent-sh.
+Decision: `git` and `agent-sh` keep `fs.rw = ["$CWD"]` (agents must commit and create files),
+and `cant` **detects** changes. `src/watch.rs` records a baseline of the trigger files at the
+first top-level `cant run` in a directory (`~/.local/state/cantainer/watch/`, a protected
+path), compares at every later one, and prints a warning naming the code-running setting.
+`cant verify [--accept]` shows the diff. Harmless changes (remotes, branches, removals) are
+folded into the baseline silently; unknown settings are reported (fail-safe allowlist).
+Detection is after the fact, trust-on-first-use, and covers a fixed list of names; see
+SECURITY.md.
 
-Costs, accepted: no creating, renaming or deleting entries in the project root (those rights
-belong to the directory), no commits by the agent, entries created after launch aren't
-granted, and only top-level names are covered (a nested `.envrc`, submodule `.git`, `Makefile`
-or `package.json` script is still writable). Symlinks in the directory are skipped.
+Where untrusted code runs by design, prevention is used instead: `cargo` and `cargo-net` grant
+`$CWD/*` (each existing entry separately; `.git`, `.envrc`, `.vscode`, `.idea`, `.githooks`
+read-only), with `fs.ensure_dirs`/`ensure_files` creating `target/` and `Cargo.lock`. They can't
+create other entries in the project root.
+
+*Tried and replaced:* making git read-only on `.git` (shipped for one commit, `d4b8eaa`). It
+closed the escape for the known names, but agents couldn't commit or stage, which is the main
+thing they use git for.
 
 Rejected:
 
-- **A tripwire** (hash the trigger files, warn on change): detects after the fact, needs the
-  user to look; not fail-closed.
-- **Read-only bind mounts in a user namespace**: strongest, keeps agent commits, but brings
-  namespaces back (restricted on Ubuntu 24.04), startup cost and a fail-closed fallback.
-- **Documenting only**: leaves the default agent setup able to escape.
-- **Pre-creating nothing for cargo**: a fresh checkout wouldn't build.
+- **Read-only bind mounts in a user namespace**: strongest and keeps commits, but brings
+  namespaces back (restricted on Ubuntu 24.04), startup cost and a fail-closed fallback. Revisit.
+- **A supervisor that watches while the cant runs**: contradicts "no supervisor".
+- **Documenting only**: the `.git` case is invisible to `git diff`, so reviewing a diff won't
+  catch it.
 
 ### Manifest lookup
 

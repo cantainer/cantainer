@@ -138,7 +138,7 @@ Grants for files named on the command line:
 
 | Field | Meaning |
 |---|---|
-| `fs.rw = ["$CWD/*"]` | Every existing entry directly inside the current directory is granted read-write, **except** `.git`, `.envrc`, `.vscode`, `.idea` and `.githooks`, which stay read-only (the directory itself is readable). Those are what git, direnv and editors run code from later, outside any sandbox, so a write there is a delayed escape. Symlinks are skipped. Only `fs.rw` accepts it. |
+| `fs.rw = ["$CWD/*"]` | Every existing entry directly inside the current directory is granted read-write, **except** `.git`, `.envrc`, `.vscode`, `.idea` and `.githooks`, which stay read-only (the directory itself is readable). Those are what git, direnv and editors run code from later, outside any sandbox, so a write there is a delayed escape. Symlinks are skipped. Only `fs.rw` accepts it. The built-in `cargo` and `cargo-net` use it, because they run untrusted build scripts; `git` and `agent-sh` use plain `$CWD` and rely on [`cant verify`](AGENTS.md#noticing-planted-files-cant-verify). |
 | `fs.ensure_dirs = ["$CWD/target"]` | `cant` creates the directory (empty) if missing, before restricting itself, and grants it read-write. One name, directly in `$CWD`; the names above are refused. |
 | `fs.ensure_files = ["$CWD/Cargo.lock"]` | The same for a file, created empty. |
 
@@ -202,8 +202,9 @@ can only add access and a grant on `~` would expose everything inside it:
 - **Read-only:** `~/.config/cantainer`, shell startup files (`~/.bashrc`, `~/.profile`,
   `~/.zshrc`, …), `~/.config/fish`, `~/.config/autostart`, `~/.config/systemd`,
   `~/.config/environment.d`, `~/.gitconfig`, `~/.config/git`, `~/.local/bin`, `~/bin`,
-  `~/.vimrc`, `~/.config/nvim`, `~/.cargo/config.toml`. Writing any of them would run code
-  outside the sandbox later.
+  `~/.vimrc`, `~/.config/nvim`, `~/.cargo/config.toml`, and `~/.local/state/cantainer` (the
+  `cant verify` baselines). Writing any of them would run code outside the sandbox later or
+  hide that it happened.
 
 A grant that *contains* one of these is refused too. For example, the `git` example grants
 `$CWD`, so running it from your home directory is refused. To reach a protected path deliberately,

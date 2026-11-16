@@ -61,6 +61,8 @@ pub const READ_ONLY_HOME_PATHS: &[&str] = &[
     ".config/nvim",
     ".cargo/config.toml",
     ".config/environment.d",
+    // `cant verify` baselines: a cant that could write them could hide a change.
+    ".local/state/cantainer",
 ];
 
 /// One protected path and the most access any implicit grant may have there.

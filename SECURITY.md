@@ -76,13 +76,14 @@ These are current gaps. Most are kernel limits, and some are planned work.
   manifest grants them; this fails closed.
 - **seccomp is a deny list.** System calls not listed are allowed, and Landlock is the primary
   filesystem control. Architectures other than x86_64, aarch64 and riscv64 are unsupported.
-- **Delayed execution is only closed for known names, at the top level.** `git`, `agent-sh` and
-  `cargo` can't write `.git`, `.envrc`, `.vscode`, `.idea` or `.githooks` directly in the project
-  directory, which stops the best-known ways to run code later outside the sandbox. Everything
-  else in the project stays writable, and anything you later run unsandboxed can execute it: a
-  `Makefile`, `package.json` scripts, `build.rs`, test files, `.gitattributes` filters you
-  configure yourself, a nested `.envrc` or `.vscode` in a subdirectory, a submodule's `.git`.
-  Review what an agent changed before you run it outside a cant. `git-write` can write `.git`
-  and so can plant hooks; use it only on repositories you trust.
+- **Delayed execution is detected, not prevented, for `git` and `agent-sh`.** They can write
+  `.git`, `.envrc` and `.vscode` in the project, so they can plant `core.fsmonitor`, a hook or
+  a task that runs later, outside any cant, with your rights. `cant run` warns when those files
+  changed since the last check and `cant verify` shows how, but: it is after the fact (a prompt
+  or IDE that runs `git status` may run the planted code before you run `cant` again); the first
+  run in a directory trusts what is there; only a fixed list of files is watched; and settings it
+  doesn't recognise are reported, not understood. `cargo` and `cargo-net` do prevent it for the
+  names above (`$CWD/*`), but not in nested directories. Review what an agent changed before
+  running a `Makefile`, `package.json` script, `build.rs` or test outside a cant.
 - **`CANT_POLICY` is informational.** A cant can forge it to change what a nested `cant` prints,
   but not what the kernel enforces.
