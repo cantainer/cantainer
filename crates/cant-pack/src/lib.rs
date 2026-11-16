@@ -93,20 +93,22 @@ mod roundtrip {
 
     use crate::Error;
 
-    const CAT: &str = "manifest_version = 1\nname = \"cat\"\nversion = \"1.0\"\n\
-                       [entrypoint]\npath = \"cat\"\n[args]\noperands = \"r\"\n";
+    // GNU grep, not cat: on Ubuntu 26.04 cat is a uutils multi-call program that refuses to
+    // run when /proc/self/exe isn't itself, as happens through the loader (CANS.md Decision C).
+    const GREP: &str = "manifest_version = 1\nname = \"grep\"\nversion = \"1.0\"\n\
+                       [entrypoint]\npath = \"grep\"\n[args]\noperands = \"r\"\n";
 
-    fn pack_cat(tmp: &Path) -> crate::pack::Packed {
-        let m = Manifest::from_toml_str(CAT).expect("manifest");
-        crate::pack::pack(&m, tmp, &tmp.join("cat.can")).expect("pack")
+    fn pack_grep(tmp: &Path) -> crate::pack::Packed {
+        let m = Manifest::from_toml_str(GREP).expect("manifest");
+        crate::pack::pack(&m, tmp, &tmp.join("grep.can")).expect("pack")
     }
 
     #[test]
-    fn pack_then_install_cat() {
+    fn pack_then_install_grep() {
         let dir = tempfile::tempdir().expect("tempdir");
         let tmp = std::fs::canonicalize(dir.path()).expect("canonical");
-        let packed = pack_cat(&tmp);
-        assert!(packed.files >= 3, "cat, libc and the loader: {packed:?}");
+        let packed = pack_grep(&tmp);
+        assert!(packed.files >= 3, "grep, libc and the loader: {packed:?}");
 
         let data = tmp.join("data");
         let can = crate::install::install(&packed.dir, &data).expect("install");
@@ -136,6 +138,7 @@ mod roundtrip {
             .arg("--library-path")
             .arg(lib_path.join(":"))
             .arg(&program)
+            .arg("hi")
             .arg(tmp.join("hello"))
             .output()
             .expect("run");
@@ -148,7 +151,7 @@ mod roundtrip {
     fn tampered_layout_and_install_are_refused() {
         let dir = tempfile::tempdir().expect("tempdir");
         let tmp = std::fs::canonicalize(dir.path()).expect("canonical");
-        let packed = pack_cat(&tmp);
+        let packed = pack_grep(&tmp);
         let data = tmp.join("data");
 
         // A blob in the layout changed: refused before anything is installed.

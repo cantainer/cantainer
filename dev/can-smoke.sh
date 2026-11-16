@@ -2,7 +2,10 @@
 # Cross-distribution check for cans (CI jobs `cans-*`). A can carries its own libc and ELF
 # loader, so a can packed on one distribution must run on another.
 #
-#   dev/can-smoke.sh pack DIR   # pack the built-in cat and git cants into DIR
+#   dev/can-smoke.sh pack DIR   # pack the built-in grep and git cants into DIR
+#
+# grep rather than cat: on Ubuntu 26.04 cat is a uutils multi-call program that refuses to run
+# when /proc/self/exe isn't itself, as happens through a can's loader (docs/CANS.md, Decision C).
 #   dev/can-smoke.sh run DIR    # run the cans in DIR here
 #
 # Uses `cant` from PATH, or $CANT.
@@ -22,7 +25,7 @@ fail() {
 
 case $cmd in
 pack)
-  for c in cat git; do
+  for c in grep git; do
     rm -rf "$dir/$c.can"
     "$cant" pack "$c" -o "$dir/$c.can"
   done
@@ -36,11 +39,11 @@ run)
   work=$(mktemp -d)
   cd "$work"
   echo hello >notes.txt
-  out=$("$cant" run "$dir/cat.can" notes.txt) || fail "cat.can failed"
-  [ "$out" = hello ] || fail "cat.can printed '$out'"
+  out=$("$cant" run "$dir/grep.can" hello notes.txt) || fail "grep.can failed"
+  [ "$out" = hello ] || fail "grep.can printed '$out'"
   # The can must not use the host's libraries: none may be granted.
-  if "$cant" run --explain "$dir/cat.can" notes.txt | grep -E ' library$'; then
-    fail "host libraries were granted to cat.can"
+  if "$cant" run --explain "$dir/grep.can" hello notes.txt | grep -E ' library$'; then
+    fail "host libraries were granted to grep.can"
   fi
   mkdir repo
   cd repo
