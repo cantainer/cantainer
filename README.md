@@ -59,22 +59,28 @@ The long-term goal is a Linux system with no shared userland, where every comman
 ## Cans: tools that carry their permissions
 
 ```
-   _____________________
-  (_____________________)
-  |                     |
-  |      grep 3.11      |
-  |  =================  |
-  |  program            |
-  |  + libc, ld.so      |
-  |  + manifest, SBOM   |
-  |                     |
-  |  MAY:               |
-  |   read   args only  |
-  |   net    no         |
-  |   ~/.ssh never      |
-  |  =================  |
-  |  sha256:71e5b8...   |
-  (_____________________)
+        _.-----------------._
+     .-'       .-----.       '-.
+    (          '-----'          )
+    |'-._                   _.-'|
+    |    '-----------------'    |
+    |===========================|
+    |                           |
+    |         G R E P           |
+    |           3.11            |
+    |  -----------------------  |
+    |   program + libc + ld.so  |
+    |   manifest + SBOM         |
+    |                           |
+    |   MAY:  read    args only |
+    |         net     no        |
+    |         ~/.ssh  never     |
+    |  -----------------------  |
+    |   sha256:71e5b8...        |
+    |                           |
+    |===========================|
+     '-._                   _.-'
+         '-----------------'
 ```
 
 A **can** is a cant you can hand to someone else. It holds one program, its libraries (libc and the
