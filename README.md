@@ -225,12 +225,17 @@ The format is documented in [docs/MANIFEST.md](docs/MANIFEST.md).
 | `sed`, `jq` | the files you name, read-only (the script or filter isn't a file); no `sed -i` |
 | `grep`, `rg`, `find`, `ls`, `tree` | the current directory and the paths you name, read-only; `find` can't `-delete` or `-exec` |
 | `vim` | the files you name, read-write |
-| `git` | the current directory, read-write; no network. changes to hooks and config are reported (`cant diff`, `cant revert`) |
+| `git` | the current directory, read-write; no network. Changes to hooks and config are reported (`cant diff`, `cant revert`). `git config` doesn't work yet (see below) |
 | `cargo` | the current directory (read; write everything but `.git`, `.envrc` and editor settings; run build scripts and tests), the Rust toolchain, `~/.cargo/registry` (read-only); no network |
 | `cargo-net` | the same, plus the network: use it for `cargo fetch` |
 | `agent-sh` | a shell for AI agents: the current directory, no network, the tools above (except `vim`, `curl`) as cants |
 | `curl` | nothing: no network (files named with `-o` are writable) |
 | `curl-net` | the network; writes only files named with `-o`, `-c` or `-D` |
+
+**Known limitation:** `git config`, and other git commands that rewrite `.git/config` (`remote
+add`, `branch --set-upstream-to`), fail in the `git` cant with "chmod on .git/config.lock failed:
+Operation not permitted": git sets the lock file's permissions by path, which the sandbox
+refuses. Run them outside a cant for now.
 
 None of them can read protected paths such as `~/.ssh`. Cants that read the current directory
 refuse to start in a directory that contains one, such as your home directory.

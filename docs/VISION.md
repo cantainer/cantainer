@@ -52,4 +52,7 @@ Planned, roughly in order. None of this exists yet:
   cants as fine-grained tool sandboxes there.
 
 Also on the list: script entrypoints (`#!`), `dlopen` discovery, Landlock audit logs (ABI 7+) for
-explaining runtime denials, and fetching manifests from a registry.
+explaining runtime denials, fetching manifests from a registry, and `git config` in the `git`
+cant (git `chmod`s `.git/config.lock` by path, which the seccomp baseline refuses; the fix is
+`chmod_by_path` for git, or a narrower rule). Can-specific items are in
+[CANS.md](CANS.md#14-backlog).

@@ -160,13 +160,13 @@ made 2026-11-16 (CANS.md section 0): host allowlist backlogged (field kept, show
 network); Go MCP servers first, per-package bundles, base cans backlogged; `/proc/self/exe`
 documented in v1. Phase 2 follows CANS.md section 13; propose each step's plan before building. Step 1 done
 2026-11-16 (store, manifest v2, `cant-pack`, `cant pack`, `cant run ./x.can`; deviations in
-CANS.md "Status"). The maintainer created `cantainer/cans` (empty) for pack manifests and the
-signing CI; GHCR pushes come with step 3.
+CANS.md "Status"). Step 2 done 2026-11-16 (CI `cans-*`: Ubuntu 26.04 <-> Fedora 42). The
+maintainer created `cantainer/cans` (empty) for pack manifests and the signing CI; GHCR pushes
+come with step 3. Decided 2026-11-16: `/proc/self/exe` (uutils coreutils) and `git config` in
+the git cant are documented limitations for 0.1.0, both backlogged (CANS.md §14, VISION.md).
+CI: check the run after every push (`gh run list`); it was red unnoticed after d45a30c.
 
 Open items:
-- `git config` (and anything else that writes `.git/config`) fails in the `git` cant: git
-  `chmod`s `config.lock` by path, which the seccomp baseline blocks unless `chmod_by_path`.
-  Decide: give the git cant `chmod_by_path`, or document.
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`
   secrets (Trusted Publishing worked for 0.0.3).
 - Not yet verified by hand: `dnf install cantainer` from the RPM repo, `brew install

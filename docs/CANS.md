@@ -208,6 +208,10 @@ else from the store, and the usual runtime base. It then restricts itself and `e
   files (declared in `fs.ro`) or need v2. `cant pack` can scan strings for absolute paths under
   `/usr`, `/etc`, `/lib` in the binary and warn; this is a heuristic.
 - **`/proc/self/exe`** is the loader (Decision C). The program still has `AT_EXECFN`/`argv[0]`.
+  Programs that check it refuse to run as a can. **Example: Ubuntu 26.04's coreutils** (uutils
+  multi-call `cat`, `head`, …) stop with "Security violation: Requested utility `cat` does not
+  match executable name". GNU coreutils (Ubuntu 24.04, Fedora) and static programs (most Go MCP
+  servers) are unaffected. Decided for 0.1.0: documented, fix in the backlog.
 - **Landlock and the loader.** `execve` of the loader needs the execute right; mapping the
   program with `mmap` doesn't (ARCHITECTURE.md, "Libraries"). The existing SECURITY.md caveat that
   the loader runs any readable ELF file applies to cans, but the can has only its own `root/`.
@@ -589,14 +593,24 @@ Where step 1 differs from the design above, and why:
   applied.
 - **Local cans run without signature or approval** until step 4. Only run `.can` directories you
   made or trust.
-- **Known limitation found:** bundled helpers the program executes use the host's loader (§3).
+- **Known limitations found:** bundled helpers the program executes use the host's loader, and
+  programs that check `/proc/self/exe` (Ubuntu 26.04's uutils coreutils) refuse to run (§3).
+
+**Step 2 (done, 2026-11-16):** CI packs `grep` and `git` on Ubuntu 26.04 and Fedora 42 and runs
+each distribution's cans on the other (`dev/can-smoke.sh`, jobs `cans-*`), with the same static
+`cant` everywhere and no host library granted.
 
 ## 14. Backlog
 
 - **Host allowlist enforcement** (Decision A): user + network namespace with a `CONNECT` proxy
   sidecar, §7.3. Shares machinery with the v2 mount namespaces.
-- **Mount-namespace launch** (v2, §3): files at their usual paths, a true `/proc/self/exe`
-  (Decision C).
+- **A true `/proc/self/exe` and working bundled helpers** (Decision C, §3), either by
+  - **rewriting the interpreter path at install time**: per-user copies of the can's
+    executables whose `PT_INTERP` points at a short per-user link to the can's loader
+    (`/run/user/UID/cant/ID`, within the 27-byte field), so the kernel starts them directly;
+    no namespaces, falls back to loader launch where `/run/user` is missing; or
+  - **mount-namespace launch** (v2, §3): files at their usual paths. Needs unprivileged user
+    namespaces (an AppArmor profile on Ubuntu 24.04+).
 - **Shared base cans** (Decision B).
 - **composefs / fs-verity store** (§2).
 - **`cant search`** catalog (§6).

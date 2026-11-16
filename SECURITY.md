@@ -63,6 +63,9 @@ design does about each, are in its section 10. In short:
 
 ## Known limitations
 
+(Functional limitations, such as `git config` in the `git` cant and programs that check
+`/proc/self/exe` inside a can, are listed in the README and docs/CANS.md.)
+
 These are current gaps. Most are kernel limits, and some are planned work.
 
 - **No sandbox below Landlock ABI 3** (Linux 6.2). `cant` refuses to run there. `cant check`
