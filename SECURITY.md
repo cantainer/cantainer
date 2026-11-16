@@ -35,6 +35,26 @@ download you don't fully trust) from:
 - **You, at launch.** Files you name on the command line are granted. That is the design.
 - **`cant` itself and the files it reads before restricting itself.**
 
+## Cans (planned, not implemented)
+
+[docs/CANS.md](docs/CANS.md) designs redistributable, signed cans. Their threats, and what the
+design does about each, are in its section 10. In short:
+
+- **Malicious publisher:** the kernel enforces the manifest, the user sees it in plain language
+  before the first run, and protected paths can't be granted by any manifest. A user can still
+  approve a can that asks for too much; a network capability plus a token in its environment
+  means the token can go anywhere the network label allows.
+- **Registry compromise and downgrades:** digests inside a signed manifest, identity-based
+  signature policy, and refusal of older signed versions. A compromised **signer** can still
+  ship a malicious update that asks for no new rights.
+- **Approval fatigue:** short labels, diff-only updates, default no, no "allow all", and
+  `--approve-if-within` policies so that agents and CI don't depend on clicking.
+- **Local store tampering:** cants can't write the store, and files are verified when written.
+  Software running as you can still edit it until the store moves to fs-verity or composefs.
+- **Network host limits can't be enforced with Landlock and seccomp** (Landlock filters ports,
+  not addresses). Until a network-namespace proxy exists, a can's host allowlist is reported as
+  unrestricted network.
+
 ## Known limitations
 
 These are current gaps. Most are kernel limits, and some are planned work.

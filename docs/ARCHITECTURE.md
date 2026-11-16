@@ -278,6 +278,19 @@ empty `/etc/cantainer/cants` for administrators.
 it could grant itself the network or more of the file system. Removed in 0.0.2; a path such as
 `cant run ./cants/x.toml` is still explicit.
 
+## Cans (design only)
+
+Redistributable, signed cants as OCI artifacts are designed in [CANS.md](CANS.md) and
+[spec/can-format.md](../spec/can-format.md). Decisions recorded there, with rejected alternatives
+in CANS.md section 11:
+
+- **One blob per file**, not tar layers (rejected: tar layers, Nix-style relocation,
+  AppImage-style squashfs, mount namespaces by default).
+- **The can runs through its bundled loader**, with a hard-link view of its own files, so v1 still
+  needs no namespaces. Mount namespaces are an opt-in v2.
+- **Host allowlists need a network namespace and a proxy**; Landlock network rules are
+  port-only. Open decision for the maintainer (CANS.md, Decision A).
+
 ## Where the code is
 
 | Concern | File |

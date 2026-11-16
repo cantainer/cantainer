@@ -153,7 +153,9 @@ requires green CI, `channels.yml` re-publishes the channels of an existing relea
 Phase 0 for cans (2026-11-16): more read-only protected paths, offline `cargo` registry read-only,
 `cargo`/`cargo-net` use `$CWD/*` + `fs.ensure_dirs/ensure_files`, and `cant verify` detects planted
 `.git`/`.envrc`/`.vscode` changes for `git` and `agent-sh` (they stay writable so agents can
-commit; decision in ARCHITECTURE.md). Cans design (Phase 1) is next.
+commit; decision in ARCHITECTURE.md).
+Cans Phase 1 (design) written 2026-11-16: `docs/CANS.md`, `spec/can-format.md`; waiting for the
+maintainer's review (Decisions A-C in CANS.md section 0) before Phase 2. Do not start Phase 2 first.
 
 Open items:
 - The maintainer revokes the `CRATES_TOKEN` crates.io token and deletes both `CRATES_TOKEN`

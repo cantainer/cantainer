@@ -38,7 +38,8 @@ Milestone 0 (this repository today): manifests, policy, the Landlock + seccomp l
 Planned, roughly in order. None of this exists yet:
 
 - **OCI registry pull and push.** Distribute cants (manifest + files) through any OCI registry,
-  addressed by digest.
+  addressed by digest. Designed as **cans** in [CANS.md](CANS.md) and
+  [spec/can-format.md](../spec/can-format.md); next release line (0.1.0).
 - **Content-addressed store.** Per-file storage under `cant-store`, later backed by **composefs**
   with **fs-verity**, so files are deduplicated across cants and verified by the kernel on read.
 - **Signing.** Sigstore signatures on cant manifests, checked at pull and at run time.
